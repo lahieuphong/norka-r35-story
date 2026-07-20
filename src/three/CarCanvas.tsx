@@ -25,7 +25,7 @@ function readProfile(): Profile {
   const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
   const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
   const lowEnd = isMobile && (lowMemory || lowCpu);
-  const cap = lowEnd ? 1 : isMobile ? 1.15 : 1.5;
+  const cap = lowEnd ? 0.9 : isMobile ? 1 : 1.5;
   return { isMobile, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
 }
 function useProfile(): Profile {
@@ -49,6 +49,23 @@ function VisibilityController() {
     document.addEventListener('visibilitychange', change);
     return () => document.removeEventListener('visibilitychange', change);
   }, [invalidate, setFrameloop]);
+  return null;
+}
+function StaticShadowMap({ enabled, isMobile }: { readonly enabled: boolean; readonly isMobile: boolean }) {
+  const gl = useThree((state) => state.gl);
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    if (!enabled) return;
+    const previousAutoUpdate = gl.shadowMap.autoUpdate;
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+    invalidate();
+    return () => {
+      gl.shadowMap.autoUpdate = previousAutoUpdate;
+      gl.shadowMap.needsUpdate = true;
+      invalidate();
+    };
+  }, [enabled, gl, invalidate, isMobile]);
   return null;
 }
 function WebGLFallback({ onFailure }: { readonly onFailure: () => void }) {
@@ -92,6 +109,7 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
         >
           <color attach="background" args={['#08090b']} />
           <VisibilityController />
+          <StaticShadowMap enabled={modelReady && !profile.lowEnd} isMobile={profile.isMobile} />
           <CameraRig controlsRef={controlsRef} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
           <Suspense fallback={null}>
             <Lighting isMobile={profile.isMobile} />

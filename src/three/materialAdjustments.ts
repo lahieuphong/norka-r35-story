@@ -11,8 +11,20 @@ export function applyMaterialAdjustments(root: THREE.Object3D): void {
       if (visited.has(material) || !PATCHABLE.has(material.name)) return;
       visited.add(material);
       if (material instanceof THREE.MeshStandardMaterial) {
-        if (material.name === 'ext_body') material.envMapIntensity = 0.9;
-        if (material.name === 'ext_carbon') material.envMapIntensity = 0.95;
+        if (material.name === 'ext_body') {
+          material.metalness = 0.7;
+          material.roughness = 0.22;
+          material.envMapIntensity = 1.2;
+          if (material instanceof THREE.MeshPhysicalMaterial) {
+            material.clearcoat = 1;
+            material.clearcoatRoughness = 0.07;
+            material.specularIntensity = 1;
+          }
+        }
+        if (material.name === 'ext_carbon') {
+          material.roughness = 0.34;
+          material.envMapIntensity = 1;
+        }
         if (material.name === 'ext_chrome') material.envMapIntensity = 1.2;
         if (material.name === 'tiresss') material.envMapIntensity = 0.45;
         if (material.name === 'caliperrs') material.envMapIntensity = 0.8;
