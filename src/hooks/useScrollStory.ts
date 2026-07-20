@@ -30,7 +30,8 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
     if (!root) return;
     const sections = Array.from(root.querySelectorAll<HTMLElement>('[data-story-section]'));
     const copies = sections.map((section) => section.querySelector<HTMLElement>('[data-story-copy]')).filter((item): item is HTMLElement => item !== null);
-    if (sections.length !== STORY_SHOT_ORDER.length || copies.length !== STORY_SHOT_ORDER.length) return;
+    const orderMatches = sections.every((section, index) => section.dataset.storySection === STORY_SHOT_ORDER[index]);
+    if (sections.length !== STORY_SHOT_ORDER.length || copies.length !== STORY_SHOT_ORDER.length || !orderMatches) return;
     copyShot(rig, shots, 'hero');
     setProgress(0);
 

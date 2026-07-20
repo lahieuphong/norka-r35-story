@@ -25,7 +25,7 @@ export default function CameraDebugHUD() {
     frame = requestAnimationFrame(update); return () => cancelAnimationFrame(frame);
   }, [visible]);
   if (!visible) return null;
-  const snippet = `${values.section}: {\n  position: [${values.position.map(fmt).join(', ')}],\n  target: [${values.target.map(fmt).join(', ')}],\n  fov: ${values.fov.toFixed(2)},\n},`;
+  const snippet = `${JSON.stringify(values.section)}: {\n  position: [${values.position.map(fmt).join(', ')}],\n  target: [${values.target.map(fmt).join(', ')}],\n  fov: ${values.fov.toFixed(2)},\n},`;
   const copy = async (): Promise<void> => { await copyText(snippet); setCopied(true); window.setTimeout(() => setCopied(false), 1200); };
   return (
     <aside className="camera-debug" aria-label="Development camera inspector">

@@ -52,7 +52,9 @@ export function App() {
     const snapshot = bodySnapshot.current; if (!snapshot) return;
     const body = document.body;
     body.style.position = snapshot.position; body.style.top = snapshot.top; body.style.left = snapshot.left; body.style.right = snapshot.right; body.style.width = snapshot.width; body.style.overflow = snapshot.overflow;
-    bodySnapshot.current = null; document.documentElement.classList.remove('is-explore-locked'); window.scrollTo(0, lockedY.current);
+    const root = document.documentElement;
+    const previousScrollBehavior = root.style.scrollBehavior;
+    bodySnapshot.current = null; root.classList.remove('is-explore-locked'); root.style.scrollBehavior = 'auto'; window.scrollTo(0, lockedY.current); root.style.scrollBehavior = previousScrollBehavior;
   }, []);
   useEffect(() => () => unlockScroll(), [unlockScroll]);
 
@@ -86,7 +88,12 @@ export function App() {
         <StorySection id="performance" index="03" eyebrow="Power beneath the surface" heading="Performance" body="A focused powertrain, aggressive cooling and track-inspired engineering form the heart of the machine." />
         <StorySection id="precision" index="04" eyebrow="Control at every corner" heading="Precision" body="Lightweight wheels, performance braking and a tuned suspension translate power into controlled motion." align="right" />
         <StorySection id="interior" index="05" eyebrow="Built around the driver" heading="Cockpit" body="Step through the glass into a focused cabin of leather, carbon, instrumentation and driver-first controls." />
-        <StorySection id="explore" index="06" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || phase !== 'story'} ctaButtonRef={exploreButtonRef}><Attribution model={modelAttribution} /></StorySection>
+        <StorySection id="steering" index="06" eyebrow="Command in every touch" heading="Steering" body="A compact performance wheel places the essential controls and shift inputs directly beneath the driver's hands." />
+        <StorySection id="instruments" index="07" eyebrow="Information at a glance" heading="Digital Cluster" body="Layered gauges and illuminated displays keep the car's vital information in the driver's natural line of sight." align="right" />
+        <StorySection id="front-seats" index="08" eyebrow="Shaped for the drive" heading="Front Seats" body="Sculpted front seats pair pronounced bolsters with a low, driver-focused seating position." align="right" />
+        <StorySection id="rear-seats" index="09" eyebrow="Performance with space" heading="Rear Seats" body="A compact second row carries the cabin's dark, purposeful materials beyond the front cockpit." />
+        <StorySection id="rear-seat-detail" index="10" eyebrow="A closer look" heading="Second Row" body="A lower camera pass reveals both sculpted rear cushions, their individual bolsters and the shared center console." align="right" />
+        <StorySection id="explore" index="11" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || phase !== 'story'} ctaButtonRef={exploreButtonRef}><Attribution model={modelAttribution} /></StorySection>
       </main>
       <ExploreOverlay phase={phase} onExit={exitExplore} />
       <LoadingScreen sceneReady={modelReady} failed={webglFailed} />

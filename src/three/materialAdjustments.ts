@@ -9,7 +9,11 @@ const PATCHABLE = new Set([
   'INT_Decals_EMISSIVE',
   'INT_Decals_EMISSIVE_Ref',
   'INT_Decals_Display',
+  'INT_Cockpit_OCC_Carbon',
+  'INT_Cockpit_OCC_Alu',
+  'INT_Cockpit_OCC_METAL_black',
 ]);
+const SHADOWLESS_GLASS = new Set(['ext_glass', 'INT_Glass_DISPLAY', 'INT_Display_Glass']);
 const INTERIOR_EMISSIVE_INTENSITY: Readonly<Partial<Record<string, number>>> = {
   INT_Decals_EMISSIVE: 0.55,
   INT_Decals_EMISSIVE_Ref: 0.4,
@@ -22,7 +26,7 @@ export function applyMaterialAdjustments(root: THREE.Object3D): void {
     object.castShadow = true;
     object.receiveShadow = true;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
-    if (materials.some((material) => material.name === 'ext_glass')) {
+    if (materials.some((material) => SHADOWLESS_GLASS.has(material.name))) {
       object.castShadow = false;
       object.receiveShadow = false;
     }
@@ -42,6 +46,18 @@ export function applyMaterialAdjustments(root: THREE.Object3D): void {
         }
         if (material.name === 'ext_carbon') {
           material.roughness = 0.34;
+          material.envMapIntensity = 1;
+        }
+        if (material.name === 'INT_Cockpit_OCC_Carbon') {
+          material.roughness = 0.32;
+          material.envMapIntensity = 1;
+        }
+        if (material.name === 'INT_Cockpit_OCC_Alu') {
+          material.roughness = 0.28;
+          material.envMapIntensity = 1;
+        }
+        if (material.name === 'INT_Cockpit_OCC_METAL_black') {
+          material.roughness = 0.36;
           material.envMapIntensity = 1;
         }
         if (material.name === 'ext_chrome') material.envMapIntensity = 1.2;
