@@ -7,17 +7,17 @@ export function Lighting({ isMobile }: Props) {
   const scene = useThree((state) => state.scene);
   useEffect(() => {
     const previous = scene.environmentIntensity;
-    scene.environmentIntensity = 0.9;
+    scene.environmentIntensity = 0.78;
     return () => { scene.environmentIntensity = previous; };
   }, [scene]);
   return (
     <>
       <Environment files="/hdr/automotive-studio.hdr" background={false} />
-      <ambientLight intensity={0.1} />
+      <ambientLight intensity={0.16} />
       <directionalLight
         castShadow
         color="#ffffff"
-        intensity={2}
+        intensity={1.65}
         position={[-4.5, 6.5, 5.5]}
         shadow-mapSize-width={isMobile ? 1024 : 2048}
         shadow-mapSize-height={isMobile ? 1024 : 2048}
@@ -29,9 +29,9 @@ export function Lighting({ isMobile }: Props) {
         shadow-camera-bottom={-5}
         shadow-bias={-0.00015}
       />
-      <directionalLight color="#ffffff" intensity={0.9} position={[5.5, 3.2, -4.5]} />
-      <spotLight color="#ffffff" intensity={5.5} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
-      <rectAreaLight color="#ffffff" intensity={5} width={5.5} height={1.2} position={[0, 5.5, 1]} rotation={[-Math.PI / 2, 0, 0]} />
+      <directionalLight color="#ffffff" intensity={0.72} position={[5.5, 3.2, -4.5]} />
+      <spotLight color="#ffffff" intensity={3.7} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
+      <rectAreaLight color="#ffffff" intensity={2.45} width={5.5} height={1.2} position={[0, 5.5, 1]} rotation={[-Math.PI / 2, 0, 0]} />
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}>
         <planeGeometry args={[30, 30]} />
         <meshStandardMaterial color="#07080a" roughness={0.93} metalness={0.02} />

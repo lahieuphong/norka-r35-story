@@ -2,12 +2,14 @@
 
 ## Phạm vi
 
-Camera được tinh chỉnh trực quan tại đúng hai viewport:
+Lượt tinh chỉnh bố cục ban đầu được thực hiện tại hai viewport chính:
 
 - Desktop: **1440 × 900**
 - Mobile: **390 × 844**
 
-Không thay model, normalization transform, scale model, CSS transform, lighting, waypoints, GSAP timeline hay kiến trúc scene. Trong mã runtime 3D, chỉ các giá trị `position`, `target` và `fov` trong `desktopShots` và `mobileShots` của `src/three/cameraShots.ts` được thay đổi; các thay đổi còn lại chỉ phục vụ workflow Yarn và tài liệu bàn giao.
+Lượt kiểm tra coverage sau đó chụp lại toàn bộ 12 cảnh tại `1440 × 900` và `390 × 844`, đồng thời kiểm tra cảnh mới cùng các transition lân cận tại `768 × 1024` và `844 × 390`.
+
+Không thay model, normalization transform, scale model, CSS transform, lighting, cơ chế GSAP master timeline hay kiến trúc Three scene. Trong mã runtime 3D, các giá trị `position`, `target`, `fov` và waypoint trong `src/three/cameraShots.ts` được tinh chỉnh; một section `rear-signature` được bổ sung để hoàn thiện coverage ngoại thất.
 
 Debug HUD phát triển vẫn được bật/tắt bằng phím **D** và nút **Copy shot** tiếp tục xuất object hợp lệ. Các tọa độ tốt nhất đã được lưu trực tiếp vào source.
 
@@ -46,12 +48,27 @@ Debug HUD phát triển vẫn được bật/tắt bằng phím **D** và nút *
 | Mobile | Precision | Mâm/phanh trước chiếm ưu thế; phần đầu và đủ chiều dài thân xe còn lại để hiểu vị trí chi tiết. |
 | Mobile | Explore | Toàn xe nằm gọn, bề ngang khoảng **79.43%**, có khoảng trống đều quanh xe. |
 
+## Bổ sung — Digital Cluster
+
+- Desktop: `position [0.37, 1.04, -0.24] → [0.58, 1.05, -0.29]`, `target [0.20, 0.82, 0.45] → [0.10, 0.74, 0.47]`, `fov 38 → 41`.
+- Compact/portrait: `position [0.37, 1.02, -0.28] → [0.62, 1.04, -0.36]`, `target [0.37, 0.70, 0.45] → [0.14, 0.56, 0.47]`, `fov 52 → 65`.
+- Waypoint `instruments` được dịch sang phải từ `x 0.10 → 0.28` trên desktop và `x 0.08 → 0.28` trên compact, đồng thời lùi nhẹ theo trục Z để chuyển động từ Steering không dồn vào nửa sau.
+- Khung cuối giữ vô-lăng và cụm đồng hồ làm ngữ cảnh, đồng thời đưa màn hình trung tâm cùng center stack vào vùng nhìn rõ. Đã kiểm tra tại `1440 × 900`, `768 × 1024`, `390 × 844` và `844 × 390`, cùng khung giữa transition Steering → Digital Cluster.
+
+## Bổ sung — Rear Signature và đường lia vào cabin
+
+- Thêm cảnh số `04` sau Performance: desktop dùng `position [-4.10, 1.60, -6.00]`, `target [-1.45, 0.52, -1.70]`, `fov 33`; compact dùng `position [-8.30, 2.40, -10.80]`, `target [-0.50, 0.25, -1.35]`, `fov 52`.
+- Khung hình mới bao quát bốn đèn hậu tròn, cánh gió, bánh sau, bốn đầu pô và diffuser; copy nằm tách khỏi thân xe ở cả desktop lẫn portrait.
+- Quỹ đạo Performance → Rear Signature đi qua waypoint desktop `[-7.20, 2.10, 0.20]` / compact `[-10.00, 3.00, 0.00]`. Quỹ đạo Rear Signature → Precision tiếp tục vòng ngoài sườn trái qua `[-6.50, 1.90, 2.80]` / `[-9.50, 2.30, 3.80]`, tránh cắt xuyên thân xe.
+- Waypoint vào Cockpit được đổi thành `[-0.24, 1.55, -2.20]` trên desktop và `[-0.18, 1.55, -2.20]` trên compact. Camera đi từ cửa kính sau, qua khe giữa hai ghế trước rồi dừng ở shot Cockpit; không còn đi xuyên trụ, dashboard hoặc lưng ghế tại đoạn copy xuất hiện.
+- Audit coverage xác nhận center console đã hiện trong Cockpit, Digital Cluster và Front Seats nên không cần thêm section trùng nội dung. Khoang máy không thể lộ chỉ bằng camera vì mesh capo của GLB đang đóng và model không có animation mở nắp; đây là giới hạn trạng thái model, không phải góc camera bị bỏ sót.
+
 ## Kiểm tra chuyển động
 
 - Master GSAP ScrollTrigger timeline vẫn là writer duy nhất của story camera.
 - Mỗi chặng vẫn tween `rig.target` liên tục trong toàn bộ duration, không chỉ tween `position`.
 - `fov` tiếp tục tween đồng bộ với position/target.
-- Desktop/mobile waypoints không bị thay đổi.
+- Waypoint `instruments`, hai chặng orbit quanh cảnh Rear Signature, và waypoint đi vào Cockpit là các waypoint được tinh chỉnh trong lượt bổ sung này.
 - Không thêm animation camera riêng cho chiều cuộn ngược; cuộn lên đánh giá ngược chính timeline hiện tại.
 - Không có CSS transform để giả dịch model và không thay đổi model scale giữa các section.
 - Explore vẫn dùng chính shot cuối khi vào/thoát, không reset scroll về đầu trang.

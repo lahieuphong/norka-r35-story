@@ -12,7 +12,7 @@ import { meshopt } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 
 const input = resolve('public/models/norka-r35-original.glb');
-const paintInput = resolve('scripts/assets/norka-r35-paint.png');
+const paintInput = resolve('public/textures/norka-paint-reference.png');
 await Promise.all([access(input), access(paintInput)]);
 
 const arg = process.argv.indexOf('--variant');

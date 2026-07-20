@@ -7,7 +7,7 @@ export function Header({ exploreActive }: Props) {
         <span className="wordmark__text"><span>NORKA</span><strong>R35</strong></span>
       </a>
       <nav aria-label="Story sections"><a href="#aerodynamics">Design</a><a href="#performance">Power</a><a href="#interior">Interior</a><a href="#explore">Explore</a></nav>
-      <span className="header-index" aria-hidden="true">01—11</span>
+      <span className="header-index" aria-hidden="true">01—12</span>
     </header>
   );
 }
