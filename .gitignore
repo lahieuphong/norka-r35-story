@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+*.local
+.vite
+public/models/norka-r35-mobile.glb

@@ -1,0 +1,53 @@
+{
+  "file": "public/models/norka-r35-desktop.glb",
+  "version": 2,
+  "byteLength": 10870432,
+  "asset": {
+    "generator": "glTF-Transform v4.4.1",
+    "version": "2.0",
+    "extras": {
+      "author": "MattDoesBlender (https://sketchfab.com/MattDoesBlender)",
+      "license": "CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)",
+      "source": "https://sketchfab.com/3d-models/unpacked-norka-varis-r35-6530a368bc4742ccb5488886d430cec7",
+      "title": "unpacked-norka_varis_r35"
+    }
+  },
+  "extensionsUsed": [
+    "EXT_meshopt_compression",
+    "KHR_materials_specular",
+    "KHR_mesh_quantization"
+  ],
+  "counts": {
+    "scenes": 1,
+    "nodes": 436,
+    "meshes": 195,
+    "materials": 64,
+    "textures": 70,
+    "images": 70,
+    "animations": 0,
+    "cameras": 0
+  },
+  "externalImages": [],
+  "externalBuffers": [],
+  "namedNodesFound": [
+    "body_11",
+    "carbon_12",
+    "Engine_23",
+    "SUSP_LF_56",
+    "SUSP_LR_58",
+    "SUSP_RF_60",
+    "SUSP_RR_62",
+    "WHEEL_LF_74",
+    "WHEEL_LR_85",
+    "WHEEL_RF_96",
+    "WHEEL_RR_107",
+    "COCKPIT_HR_233",
+    "STEER_HR_232",
+    "hoodanim_242",
+    "hood_236",
+    "hood_grills_237",
+    "hood_latch_238",
+    "hood_parts_239",
+    "hood_vents_240"
+  ]
+}
