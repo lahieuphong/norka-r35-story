@@ -27,6 +27,9 @@
 .story-section--right h1 { margin-left: auto; }
 .story-section p { width: min(34rem,86%); margin: clamp(1.4rem,2.8vw,2.4rem) 0 0; color: var(--muted); font-size: clamp(.95rem,1.2vw,1.16rem); line-height: 1.62; }
 .story-section--right p { margin-left: auto; }
+#interior .story-section__copy { position: relative; isolation: isolate; }
+#interior .story-section__copy::before { position: absolute; z-index: -1; inset: -5rem -4rem; content: ""; background: radial-gradient(ellipse at 22% 50%,rgba(8,9,11,.88) 0%,rgba(8,9,11,.66) 42%,rgba(8,9,11,0) 78%); pointer-events: none; }
+#interior .story-section__copy p { color: rgba(255,255,255,.78); text-shadow: 0 1px 1.2rem rgba(0,0,0,.9); }
 .story-cta { display: inline-flex; align-items: center; justify-content: space-between; gap: 2.5rem; min-width: 14.5rem; margin-top: clamp(1.7rem,3vw,2.8rem); padding: .88rem 0; border: 0; border-bottom: 1px solid rgba(255,255,255,.55); background: transparent; color: #fff; font-size: .76rem; font-weight: 650; letter-spacing: .12em; text-decoration: none; text-transform: uppercase; cursor: pointer; pointer-events: auto; transition: border-color 180ms ease,color 180ms ease; }
 .story-cta:hover { border-color: #d42031; }
 .story-cta:disabled { cursor: progress; opacity: .45; }
@@ -78,6 +81,7 @@
   .story-section--right h1,.story-section--right p { margin-left: 0; }
   .story-section h1 { max-width: 10ch; font-size: clamp(3.35rem,15vw,5.6rem); line-height: .88; }
   .story-section p { max-width: 31rem; font-size: .94rem; }
+  #interior .story-section__copy::before { inset: -7rem -1.2rem -8rem; background: linear-gradient(0deg,rgba(8,9,11,.92) 0%,rgba(8,9,11,.7) 50%,rgba(8,9,11,0) 100%); }
   .story-section__rail { display: none; }
   .attribution { bottom: 1rem; display: block; font-size: .54rem; }
   .attribution p + p { margin-top: .3rem; }

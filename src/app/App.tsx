@@ -85,7 +85,8 @@ export function App() {
         <StorySection id="aerodynamics" index="02" eyebrow="Sculpted by airflow" heading="Aerodynamics" body="Every surface, vent and carbon detail is shaped to manage airflow and create a planted, purposeful silhouette." align="right" />
         <StorySection id="performance" index="03" eyebrow="Power beneath the surface" heading="Performance" body="A focused powertrain, aggressive cooling and track-inspired engineering form the heart of the machine." />
         <StorySection id="precision" index="04" eyebrow="Control at every corner" heading="Precision" body="Lightweight wheels, performance braking and a tuned suspension translate power into controlled motion." align="right" />
-        <StorySection id="explore" index="05" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || phase !== 'story'} ctaButtonRef={exploreButtonRef}><Attribution model={modelAttribution} /></StorySection>
+        <StorySection id="interior" index="05" eyebrow="Built around the driver" heading="Cockpit" body="Step through the glass into a focused cabin of leather, carbon, instrumentation and driver-first controls." />
+        <StorySection id="explore" index="06" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || phase !== 'story'} ctaButtonRef={exploreButtonRef}><Attribution model={modelAttribution} /></StorySection>
       </main>
       <ExploreOverlay phase={phase} onExit={exitExplore} />
       <LoadingScreen sceneReady={modelReady} failed={webglFailed} />
