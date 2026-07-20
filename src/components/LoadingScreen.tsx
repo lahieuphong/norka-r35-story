@@ -14,7 +14,10 @@ export function LoadingScreen({ sceneReady, failed }: Props) {
   if (failed || dismissed) return null;
   return (
     <div className={`loading-screen${complete ? ' is-complete' : ''}`} role="status" aria-live="polite">
-      <div className="loading-screen__topline"><span>NORKA R35</span><span>REAL-TIME 3D</span></div>
+      <div className="loading-screen__topline">
+        <span className="loading-screen__brand"><img className="loading-screen__logo" src="/brand/norka-compass-logo-512.png" width="44" height="44" alt="" aria-hidden="true" /><span>NORKA R35</span></span>
+        <span>REAL-TIME 3D</span>
+      </div>
       <div className="loading-screen__center">
         <span className="loading-screen__number">{percentage.toString().padStart(3, '0')}</span>
         <div className="loading-screen__track" aria-hidden="true"><span style={{ transform: `scaleX(${percentage / 100})` }} /></div>

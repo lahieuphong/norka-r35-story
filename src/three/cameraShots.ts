@@ -59,5 +59,9 @@ export const mobileWaypoints: CameraWaypointSet = {
   explore: [0, 1.18, 0.8],
 };
 
-export function getShotSet(isMobile: boolean): CameraShotSet { return isMobile ? mobileShots : desktopShots; }
-export function getWaypointSet(isMobile: boolean): CameraWaypointSet { return isMobile ? mobileWaypoints : desktopWaypoints; }
+export function usesCompactCamera(width: number, height: number): boolean {
+  return width <= 1024 && height >= width;
+}
+
+export function getShotSet(compact: boolean): CameraShotSet { return compact ? mobileShots : desktopShots; }
+export function getWaypointSet(compact: boolean): CameraWaypointSet { return compact ? mobileWaypoints : desktopWaypoints; }

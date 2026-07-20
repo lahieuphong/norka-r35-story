@@ -46,20 +46,24 @@ The default runtime variant is `desktop`. Set `VITE_MODEL_VARIANT=original` only
 
 `src/three/CameraRig.tsx` copies the mutable rig into the Three.js camera in `useFrame`; React state is not updated on every scroll frame. The projection matrix is updated only when FOV changes. Section text uses opacity and transforms.
 
-For `prefers-reduced-motion`, the camera switches between static desktop/mobile shots and copy uses short opacity changes.
+For `prefers-reduced-motion`, the camera switches between static desktop/compact shots and copy uses short opacity changes.
 
 ## Refined camera compositions
 
-The camera shots were visually re-tuned without modifying the model, normalization, model scale, CSS transforms, waypoints, timeline architecture, or scene layout. The exact review viewports were:
+The camera shots were visually re-tuned without modifying the model, normalization, model scale, CSS transforms, waypoints, timeline architecture, or scene layout. The responsive review viewports were:
 
 - Desktop: `1440 × 900`
+- Tablet landscape: `1024 × 768`
+- Tablet portrait: `768 × 1024`
 - Mobile: `390 × 844`
+- Small mobile: `320 × 568`
+- Mobile landscape: `667 × 375` and `844 × 390`
 
-Only the `desktopShots` and `mobileShots` values in `src/three/cameraShots.ts` were changed. The before/after coordinates, measured framing notes, and constraints check are recorded in [`CAMERA_TUNING_REPORT.md`](./CAMERA_TUNING_REPORT.md).
+Desktop and landscape views use `desktopShots`; phones and tablets in portrait up to 1024px use `mobileShots` as the compact composition. Short landscape screens receive a dedicated low-height layout, while touch phones retain mobile DPR/shadow limits after rotation. A portrait tablet keeps the desktop render quality and zoom limits while using safer portrait framing. The before/after coordinates, measured framing notes, and constraints check are recorded in [`CAMERA_TUNING_REPORT.md`](./CAMERA_TUNING_REPORT.md).
 
 ## Explore mode
 
-The final CTA disables story ScrollTriggers without resetting their visual state, locks the page at its current scroll offset, eases to the final Explore composition, then enables OrbitControls. Pan is disabled, zoom is bounded, and polar limits prevent moving below the floor. Exit disables controls, restores the final story shot, restores the same scroll offset, and re-enables ScrollTriggers without returning to the top.
+The final CTA disables story ScrollTriggers without resetting their visual state, locks the page at its current scroll offset, eases to the final Explore composition, then enables OrbitControls. Pan is disabled, zoom is bounded, and polar limits prevent moving below the floor. Drag/touch, wheel/pinch, arrow keys, and `+`/`-` are supported. Exit disables controls, restores the final story shot, restores the same scroll offset, and re-enables ScrollTriggers without returning to the top.
 
 ## Development camera HUD
 
@@ -115,13 +119,13 @@ python scripts/generate-studio-hdr.py
 - The untouched reference GLB remains byte-identical to `source/Norka Varis R35.glb` in the supplied asset archive. SHA-256: `a377887ccb248ef0147b2e318f84c9a64dd38c0bdead96209cdcffde63b4660f`.
 - The runtime desktop GLB embeds the supplied blue paint texture byte-for-byte and reduces model size from 29,448,924 to 10,870,432 bytes without topology simplification.
 - The production bundle was checked for development HUD strings; none were present.
-- Camera framing was visually reviewed at exactly `1440 × 900` and `390 × 844` using the model's exact geometry and the production section-copy layout.
+- Camera framing and section layout were reviewed at `1440 × 900`, `1024 × 768`, `768 × 1024`, `390 × 844`, `320 × 568`, `667 × 375`, and `844 × 390` using the model's exact geometry and production copy.
 - Aerodynamics measured approximately `67.58%` of viewport width on desktop and `73.94%` on mobile, within the requested `65–75%` range.
 - Desktop and mobile shots were checked individually for full-car clearance, hood/front recognition, front wheel/brake emphasis, and Explore starting distance.
 
 ## Performance and resilience
 
-DPR is capped near 1.5 desktop, 1.15 mobile, and 1 on low-end mobile. Shadows and antialiasing are reduced on low-end devices. Rendering pauses while the tab is hidden. The scene avoids per-frame allocations, uses no heavy postprocessing on mobile, and provides a visible WebGL fallback.
+DPR is capped at 1.5 on desktop/tablet, 1 on mobile, and 0.9 on low-end mobile. Shadows and antialiasing are reduced on low-end devices. Rendering pauses while the tab is hidden. The scene avoids per-frame allocations, uses no heavy postprocessing on mobile, and provides a visible WebGL fallback.
 
 ## Final checklist
 
@@ -130,8 +134,8 @@ Implemented:
 - Real uploaded GLB, embedded texture loading, true loading progress, preload, precise Box3 normalization, and ground placement.
 - ACES Filmic tone mapping, sRGB output, local HDR studio lighting, restrained key/rim lights, ground/contact shadows.
 - Exact-name conservative material patches; original maps, normals, alpha, emissive details, decals, and proportions remain intact.
-- Five 100svh story sections, one reversible scrub timeline, synchronized text, separate desktop/mobile camera shots and waypoints.
-- Refined Hero, Aerodynamics, Performance, Precision, and Explore compositions at both required viewports.
+- Eleven 100svh story sections, one reversible scrub timeline, synchronized text, and separate desktop/compact camera shots and waypoints.
+- Refined all eleven compositions across desktop, tablet portrait/landscape, and phone portrait/landscape viewports.
 - Explore enter/exit lifecycle, scroll preservation, OrbitControls limits, accessibility focus states, reduced motion, and WebGL fallback.
 - Development-only D-key camera HUD and copyable shot output.
 - Yarn-only setup and deployment workflow with `yarn.lock` and Vercel `yarn build` configuration.

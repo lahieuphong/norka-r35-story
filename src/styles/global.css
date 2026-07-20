@@ -8,7 +8,8 @@
   --text: #f3f1ed;
   --muted: #aaa8a3;
   --line: rgba(255,255,255,.18);
-  --accent: #a50e1d;
+  --accent: #4daaff;
+  --accent-soft: rgba(77,170,255,.18);
   --page-pad: clamp(1.25rem,4vw,4.75rem);
 }
 * { box-sizing: border-box; }
@@ -17,7 +18,7 @@ html.is-explore-locked { overscroll-behavior: none; touch-action: none; }
 body { min-width: 320px; min-height: 100%; margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text); }
 button,a { font: inherit; }
 a,button { color: inherit; }
-::selection { background: var(--accent); color: #fff; }
+::selection { background: var(--accent); color: var(--bg); }
 :focus-visible { outline: 2px solid #f7f2eb; outline-offset: 5px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .skip-link { position: fixed; z-index: 200; top: .75rem; left: .75rem; padding: .75rem 1rem; background: #fff; color: #08090b; transform: translateY(-160%); transition: transform 180ms ease; }

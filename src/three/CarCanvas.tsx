@@ -8,7 +8,7 @@ import { CameraRig } from './CameraRig';
 import { CarModel, type ModelReadyDetails } from './CarModel';
 import type { ExplorePhase } from './experienceTypes';
 import { Lighting } from './Lighting';
-import { getShotSet } from './cameraShots';
+import { getShotSet, usesCompactCamera } from './cameraShots';
 
 interface Props {
   readonly modelReady: boolean;
@@ -19,14 +19,17 @@ interface Props {
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
 }
-interface Profile { readonly isMobile: boolean; readonly lowEnd: boolean; readonly dpr: number; }
+interface Profile { readonly isMobile: boolean; readonly compact: boolean; readonly lowEnd: boolean; readonly dpr: number; }
 function readProfile(): Profile {
-  const isMobile = window.matchMedia('(max-width: 767px)').matches;
+  const touchPhoneLandscape = Math.min(window.innerWidth, window.innerHeight) <= 600
+    && (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0);
+  const isMobile = window.matchMedia('(max-width: 767px)').matches || touchPhoneLandscape;
+  const compact = usesCompactCamera(window.innerWidth, window.innerHeight);
   const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
   const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
   const lowEnd = isMobile && (lowMemory || lowCpu);
   const cap = lowEnd ? 0.9 : isMobile ? 1 : 1.5;
-  return { isMobile, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
+  return { isMobile, compact, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
 }
 function useProfile(): Profile {
   const [profile, setProfile] = useState(readProfile);
@@ -88,10 +91,31 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
 export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete }: Props) {
   const profile = useProfile();
   const controlsRef = useRef<OrbitControlsImpl>(null);
-  const shot = useMemo(() => getShotSet(profile.isMobile).hero, [profile.isMobile]);
+  const shot = useMemo(() => getShotSet(profile.compact).hero, [profile.compact]);
   const interactive = phase === 'explore';
+  useEffect(() => {
+    if (!interactive) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const controls = controlsRef.current;
+      if (!controls) return;
+      const angleStep = event.shiftKey ? 0.18 : 0.1;
+      switch (event.key) {
+        case 'ArrowLeft': controls.setAzimuthalAngle(controls.getAzimuthalAngle() - angleStep); break;
+        case 'ArrowRight': controls.setAzimuthalAngle(controls.getAzimuthalAngle() + angleStep); break;
+        case 'ArrowUp': controls.setPolarAngle(controls.getPolarAngle() - angleStep); break;
+        case 'ArrowDown': controls.setPolarAngle(controls.getPolarAngle() + angleStep); break;
+        case '+': case '=': controls.dollyIn(); break;
+        case '-': case '_': controls.dollyOut(); break;
+        default: return;
+      }
+      event.preventDefault();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [interactive]);
   return (
-    <div className={`canvas-shell${interactive ? ' is-interactive' : ''}`} aria-hidden={!interactive}>
+    <div className={`canvas-shell${interactive ? ' is-interactive' : ''}`} aria-hidden={!interactive} aria-label={interactive ? 'Interactive 3D vehicle viewer. Use arrow keys to orbit and plus or minus to zoom.' : undefined} role={interactive ? 'region' : undefined} tabIndex={interactive ? 0 : -1}>
       <CanvasBoundary onFailure={onWebGLFailure}>
         <Canvas
           dpr={profile.dpr}
@@ -104,13 +128,13 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
             gl.toneMappingExposure = 0.92;
             gl.setClearColor('#08090b', 1);
             gl.shadowMap.enabled = !profile.lowEnd;
-            gl.shadowMap.type = THREE.PCFSoftShadowMap;
+            gl.shadowMap.type = THREE.PCFShadowMap;
           }}
         >
           <color attach="background" args={['#08090b']} />
           <VisibilityController />
           <StaticShadowMap enabled={modelReady && !profile.lowEnd} isMobile={profile.isMobile} />
-          <CameraRig controlsRef={controlsRef} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
+          <CameraRig controlsRef={controlsRef} compact={profile.compact} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
           <Suspense fallback={null}>
             <Lighting isMobile={profile.isMobile} />
             <CarModel onReady={onModelReady} />

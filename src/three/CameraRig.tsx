@@ -10,6 +10,7 @@ import { cameraDebugSnapshot } from './storyState';
 
 interface Props {
   readonly controlsRef: RefObject<OrbitControlsImpl | null>;
+  readonly compact: boolean;
   readonly modelReady: boolean;
   readonly phase: ExplorePhase;
   readonly reducedMotion: boolean;
@@ -17,12 +18,10 @@ interface Props {
   readonly onExitComplete: () => void;
 }
 
-export function CameraRig({ controlsRef, modelReady, phase, reducedMotion, onEnterComplete, onExitComplete }: Props) {
+export function CameraRig({ controlsRef, compact, modelReady, phase, reducedMotion, onEnterComplete, onExitComplete }: Props) {
   const camera = useThree((state) => state.camera);
-  const width = useThree((state) => state.size.width);
-  const isMobile = width < 768;
-  const shots = getShotSet(isMobile);
-  const waypoints = getWaypointSet(isMobile);
+  const shots = getShotSet(compact);
+  const waypoints = getWaypointSet(compact);
   const rigRef = useRef<CameraRigValues>({
     position: new THREE.Vector3(...shots.hero.position),
     target: new THREE.Vector3(...shots.hero.target),

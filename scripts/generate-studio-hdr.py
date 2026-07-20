@@ -1,27 +1,99 @@
 #!/usr/bin/env python3
 from pathlib import Path
 import math
-import cv2
-import numpy as np
-W,H=1024,512
-u=np.linspace(-math.pi,math.pi,W,endpoint=False,dtype=np.float32)
-v=np.linspace(math.pi/2,-math.pi/2,H,endpoint=False,dtype=np.float32)
-lon,lat=np.meshgrid(u,v)
-img=np.zeros((H,W,3),dtype=np.float32)+np.array([0.016,0.018,0.022],dtype=np.float32)
-img+=np.exp(-((lat/0.52)**2))[...,None]*np.array([0.075,0.078,0.085],dtype=np.float32)
-def delta(a,c): return np.arctan2(np.sin(a-c),np.cos(a-c))
-def panel(lo,la,ww,hh,intensity,rgb,edge=6):
- d=(np.abs(delta(lon,lo))/ww)**edge+(np.abs(lat-la)/hh)**edge
- img[:]+=np.exp(-d*2.2)[...,None]*np.array(rgb,dtype=np.float32)*intensity
-panel(math.radians(-48),math.radians(8),.42,.28,13,(1,.96,.91))
-panel(math.radians(53),math.radians(12),.34,.24,8.5,(.86,.92,1))
-panel(math.radians(4),math.radians(66),.72,.13,17,(1,.98,.94),8)
-panel(math.radians(145),math.radians(15),.25,.32,7.5,(1,.24,.18))
-panel(math.radians(-150),math.radians(20),.25,.30,6,(.38,.55,1))
-rear=np.exp(-((np.abs(delta(lon,math.pi))/.72)**6+((lat+.02)/.10)**6)*2)
-img+=rear[...,None]*np.array([2.8,2.9,3.1],dtype=np.float32)
-img*=1-np.clip((-lat-.12)/.7,0,1)[...,None]*.55
-out=Path(__file__).resolve().parents[1]/'public/hdr/automotive-studio.hdr'
-out.parent.mkdir(parents=True,exist_ok=True)
-if not cv2.imwrite(str(out),np.maximum(img,0)[...,::-1]): raise SystemExit('HDR write failed')
+
+W, H = 1024, 512
+
+
+def delta(angle, center):
+    return math.atan2(math.sin(angle - center), math.cos(angle - center))
+
+
+PANELS = (
+    (math.radians(-48), math.radians(8), .42, .28, 13, 6),
+    (math.radians(53), math.radians(12), .34, .24, 8.5, 6),
+    (math.radians(4), math.radians(66), .72, .13, 17, 8),
+    (math.radians(145), math.radians(15), .25, .32, 6.5, 6),
+    (math.radians(-150), math.radians(20), .25, .30, 5.5, 6),
+)
+
+
+def to_rgbe(red, green, blue):
+    peak = max(red, green, blue)
+    if peak < 1e-32:
+        return 0, 0, 0, 0
+    mantissa, exponent = math.frexp(peak)
+    scale = mantissa * 256.0 / peak
+    return (
+        min(255, int(red * scale)),
+        min(255, int(green * scale)),
+        min(255, int(blue * scale)),
+        exponent + 128,
+    )
+
+
+def encode_channel(values):
+    encoded = bytearray()
+    index = 0
+    length = len(values)
+    while index < length:
+        run = 1
+        while index + run < length and run < 127 and values[index + run] == values[index]:
+            run += 1
+        if run >= 4:
+            encoded.extend((128 + run, values[index]))
+            index += run
+            continue
+
+        start = index
+        index += run
+        while index < length and index - start < 128:
+            run = 1
+            while index + run < length and run < 127 and values[index + run] == values[index]:
+                run += 1
+            if run >= 4:
+                break
+            if index - start + run > 128:
+                index = start + 128
+                break
+            index += run
+        count = index - start
+        encoded.append(count)
+        encoded.extend(values[start:index])
+    return encoded
+
+
+longitudes = [-math.pi + (2 * math.pi * x / W) for x in range(W)]
+panel_horizontal = [
+    [(abs(delta(longitude, panel[0])) / panel[2]) ** panel[5] for longitude in longitudes]
+    for panel in PANELS
+]
+rear_horizontal = [(abs(delta(longitude, math.pi)) / .72) ** 6 for longitude in longitudes]
+
+out = Path(__file__).resolve().parents[1] / 'public/hdr/automotive-studio.hdr'
+out.parent.mkdir(parents=True, exist_ok=True)
+with out.open('wb') as target:
+    target.write(f'#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y {H} +X {W}\n'.encode('ascii'))
+    for y in range(H):
+        latitude = math.pi / 2 - math.pi * y / H
+        horizon = math.exp(-((latitude / .52) ** 2)) * .078
+        panel_vertical = [(abs(latitude - panel[1]) / panel[3]) ** panel[5] for panel in PANELS]
+        floor_attenuation = 1 - min(1, max(0, (-latitude - .12) / .7)) * .55
+        channels = [bytearray(W) for _ in range(4)]
+
+        for x in range(W):
+            value = .018 + horizon
+            for panel_index, panel in enumerate(PANELS):
+                distance = panel_horizontal[panel_index][x] + panel_vertical[panel_index]
+                value += math.exp(-distance * 2.2) * panel[4]
+            rear = math.exp(-(rear_horizontal[x] + ((latitude + .02) / .10) ** 6) * 2)
+            value = (value + rear * 3) * floor_attenuation
+            pixel = to_rgbe(value, value, value)
+            for channel in range(4):
+                channels[channel][x] = pixel[channel]
+
+        target.write(bytes((2, 2, W >> 8, W & 255)))
+        for channel in channels:
+            target.write(encode_channel(channel))
+
 print(out)

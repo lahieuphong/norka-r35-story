@@ -12,7 +12,7 @@ export function ExploreOverlay({ phase, onExit }: Props) {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [interactive, onExit]);
   if (phase === 'story') return null;
-  const status = phase === 'entering' ? 'Preparing interactive camera' : phase === 'exiting' ? 'Returning to the story' : 'Drag to orbit · scroll or pinch to zoom';
+  const status = phase === 'entering' ? 'Preparing interactive camera' : phase === 'exiting' ? 'Returning to the story' : 'Drag or use arrow keys to orbit · scroll, pinch, or +/- to zoom';
   return (
     <aside className={`explore-overlay${interactive ? ' is-ready' : ''}`} aria-live="polite">
       <div className="explore-overlay__status"><span className="explore-overlay__dot" aria-hidden="true" /><span>{status}</span></div>

@@ -16,7 +16,7 @@ export function Lighting({ isMobile }: Props) {
       <ambientLight intensity={0.1} />
       <directionalLight
         castShadow
-        color="#fff7ed"
+        color="#ffffff"
         intensity={2}
         position={[-4.5, 6.5, 5.5]}
         shadow-mapSize-width={isMobile ? 1024 : 2048}
@@ -29,8 +29,8 @@ export function Lighting({ isMobile }: Props) {
         shadow-camera-bottom={-5}
         shadow-bias={-0.00015}
       />
-      <directionalLight color="#8fa9ff" intensity={1.15} position={[5.5, 3.2, -4.5]} />
-      <spotLight color="#a50e1d" intensity={22} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
+      <directionalLight color="#ffffff" intensity={0.9} position={[5.5, 3.2, -4.5]} />
+      <spotLight color="#ffffff" intensity={5.5} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
       <rectAreaLight color="#ffffff" intensity={5} width={5.5} height={1.2} position={[0, 5.5, 1]} rotation={[-Math.PI / 2, 0, 0]} />
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}>
         <planeGeometry args={[30, 30]} />
