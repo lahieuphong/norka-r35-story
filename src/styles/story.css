@@ -30,23 +30,30 @@
 .header-index__value { position: absolute; z-index: 1; display: grid; place-items: center; min-width: 1.45rem; height: .95rem; border-radius: 999px; background: rgba(238,243,247,.88); color: #075f9c; font-size: .58rem; font-weight: 800; line-height: 1; letter-spacing: .045em; text-shadow: 0 0 .55rem #eef3f7; animation: header-index-value-in 260ms cubic-bezier(.22,1,.36,1) both; }
 @keyframes header-index-value-in { from { opacity: 0; transform: translateY(.2rem) scale(.88); } }
 .story-root { position: relative; z-index: 2; width: 100%; overflow-x: clip; }
-.story-section { position: relative; display: grid; align-items: center; width: 100%; min-height: 100svh; padding: 7rem max(var(--page-pad),env(safe-area-inset-right)) 5rem max(var(--page-pad),env(safe-area-inset-left)); pointer-events: none; }
-.story-section__copy { width: min(42rem,43vw); will-change: transform,opacity; }
+.story-section { --story-copy-width: min(53rem,45vw); position: relative; display: grid; align-items: center; width: 100%; min-height: 100svh; padding: 7rem max(var(--page-pad),env(safe-area-inset-right)) 5rem max(var(--page-pad),env(safe-area-inset-left)); pointer-events: none; }
+.story-section__copy-slot { width: var(--story-copy-width); }
+.story-section__copy-viewport { position: fixed; z-index: 3; top: 7rem; bottom: 5rem; display: flex; flex-direction: column; justify-content: center; width: var(--story-copy-width); pointer-events: none; }
+.story-section__copy { width: 100%; }
 :is(#hero,#aerodynamics,#performance,#rear-signature,#precision,#explore) .story-section__copy { position: relative; isolation: isolate; }
 :is(#hero,#aerodynamics,#performance,#rear-signature,#precision,#explore) .story-section__copy::before { position: absolute; z-index: -1; inset: -4.5rem -3.5rem; content: ""; pointer-events: none; background: radial-gradient(ellipse at center,rgba(237,242,246,.78) 0%,rgba(237,242,246,.4) 48%,rgba(237,242,246,0) 78%); }
-.story-section--left .story-section__copy { justify-self: start; }
-.story-section--right .story-section__copy { justify-self: end; text-align: right; }
-.story-section__meta { display: flex; align-items: center; gap: .85rem; margin-bottom: clamp(1rem,2.2vw,1.8rem); color: rgba(11,24,38,.6); font-size: .68rem; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; }
+.story-section--left .story-section__copy-slot { justify-self: start; }
+.story-section--right .story-section__copy-slot { justify-self: end; }
+.story-section--left .story-section__copy-viewport { left: max(var(--page-pad),env(safe-area-inset-left)); }
+.story-section--right .story-section__copy-viewport { right: max(var(--page-pad),env(safe-area-inset-right)); }
+.story-section--right .story-section__copy { text-align: right; }
+.story-section__meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .85rem; margin-bottom: clamp(1rem,2.2vw,1.8rem); color: rgba(11,24,38,.6); font-size: .68rem; font-weight: 700; letter-spacing: .17em; text-transform: uppercase; }
 .story-section--right .story-section__meta { justify-content: flex-end; }
 .story-section__meta span:first-child { color: var(--accent); }
 .story-section__meta span:first-child::after { content: ""; display: inline-block; width: 2.8rem; height: 1px; margin-left: .85rem; vertical-align: middle; background: rgba(11,34,54,.28); }
-.story-section h1 { max-width: 11ch; margin: 0; font-size: clamp(3.3rem,7.1vw,8.5rem); font-weight: 650; line-height: .86; letter-spacing: -.065em; text-wrap: balance; }
+.story-section__meta span:last-child { min-width: 0; overflow-wrap: anywhere; }
+/* Background-clipped text needs a paint box larger than the font's ink bounds. Negative block margins preserve the original layout height. */
+.story-section h1 { max-width: min(11.5ch,100%); margin: 0; margin-block: -.22em; padding: .22em .08em; overflow: visible; overflow-wrap: anywhere; font-size: clamp(3.3rem,7.1vw,8.5rem); font-weight: 650; line-height: .92; letter-spacing: -.065em; text-wrap: balance; }
 :is(#hero,#performance,#aerodynamics,#rear-signature,#precision,#explore) h1 { color: #07131f; }
 @supports ((background-clip: text) or (-webkit-background-clip: text)) {
   :is(#hero,#performance,#aerodynamics,#rear-signature,#precision,#explore) h1 { background-image: linear-gradient(112deg,#07131f 0%,#10283d 56%,#075a91 100%); background-clip: text; -webkit-background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
 }
 .story-section--right h1 { margin-left: auto; }
-.story-section p { width: min(34rem,86%); margin: clamp(1.4rem,2.8vw,2.4rem) 0 0; color: var(--muted); font-size: clamp(.95rem,1.2vw,1.16rem); line-height: 1.62; }
+.story-section p { width: min(34rem,86%); margin: clamp(1.4rem,2.8vw,2.4rem) 0 0; overflow-wrap: anywhere; color: var(--muted); font-size: clamp(.95rem,1.2vw,1.16rem); line-height: 1.62; }
 .story-section--right p { margin-left: auto; }
 :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__copy { position: relative; isolation: isolate; }
 :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__copy::before { position: absolute; z-index: -1; inset: -5rem -4rem; content: ""; pointer-events: none; }
@@ -57,8 +64,9 @@
 :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__meta span:first-child { color: #68bfff; }
 :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__meta span:first-child::after { background: rgba(239,245,250,.3); }
 :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__copy p { color: var(--interior-muted); text-shadow: 0 1px 1.2rem rgba(0,0,0,.9); }
-#rear-seat-detail .story-section__copy { width: min(28rem,32vw); }
+#rear-seat-detail { --story-copy-width: min(28rem,32vw); }
 .story-cta { display: inline-flex; align-items: center; justify-content: space-between; gap: 2.5rem; min-width: 14.5rem; min-height: 2.75rem; margin-top: clamp(1.7rem,3vw,2.8rem); padding: .88rem 0; border: 0; border-bottom: 1px solid rgba(11,34,54,.52); background: transparent; color: var(--text); font-size: .76rem; font-weight: 700; letter-spacing: .12em; text-decoration: none; text-transform: uppercase; cursor: pointer; pointer-events: auto; transition: border-color 180ms ease,color 180ms ease; }
+.story-cta > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .story-cta:is(:hover,:focus-visible):not(:disabled) { border-color: var(--accent); }
 .story-cta:disabled { cursor: progress; opacity: .45; }
 .story-cta__icon { display: block; flex: 0 0 auto; width: 1.75rem; height: 1.25rem; overflow: visible; color: rgba(6,102,166,.78); transform: translate3d(0,0,0); transform-origin: center; transition: color 180ms ease,filter 240ms ease,transform 320ms cubic-bezier(.22,1,.36,1); }
@@ -150,21 +158,24 @@
   .wordmark__logo { width: 2.1rem; height: 2.1rem; }
   .site-header nav { display: none; }
   .header-index { --wheel-size: 2.1rem; grid-column: 2; }
-  .story-section { align-items: end; padding-top: 5.5rem; padding-bottom: 12svh; }
+  .story-section { --story-copy-width: 100%; align-items: end; padding-top: 5.5rem; padding-bottom: 12svh; }
+  .story-section__copy-viewport { top: 5.5rem; right: max(var(--page-pad),env(safe-area-inset-right)); bottom: 12svh; left: max(var(--page-pad),env(safe-area-inset-left)); justify-content: flex-end; width: auto; }
   .story-section__copy,.story-section p { width: 100%; }
-  .story-section--right .story-section__copy { justify-self: start; text-align: left; }
+  .story-section--right .story-section__copy { text-align: left; }
   .story-section--right .story-section__meta { justify-content: flex-start; }
   .story-section--right h1,.story-section--right p { margin-left: 0; }
-  .story-section h1 { max-width: 10ch; font-size: clamp(3.35rem,15vw,5.6rem); line-height: .88; }
+  .story-section h1 { max-width: min(11.5ch,100%); font-size: clamp(3.35rem,15vw,5.6rem); line-height: .94; }
   .story-section p { max-width: 31rem; font-size: .94rem; }
   :is(#hero,#aerodynamics,#performance,#rear-signature,#precision,#explore) .story-section__copy::before { inset: -4rem -1.2rem -8rem; background: linear-gradient(0deg,rgba(232,237,242,.92) 0%,rgba(232,237,242,.55) 55%,rgba(232,237,242,0) 100%); }
   :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__copy::before { inset: -7rem -1.2rem -8rem; background: linear-gradient(0deg,rgba(8,9,11,.92) 0%,rgba(8,9,11,.7) 50%,rgba(8,9,11,0) 100%); }
   :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(2.9rem,12vw,4.8rem); }
   #rear-seat-detail { align-items: start; }
-  #rear-seat-detail .story-section__copy { width: 100%; }
+  #rear-seat-detail { --story-copy-width: 100%; }
+  #rear-seat-detail .story-section__copy-viewport { justify-content: flex-start; }
   #rear-seat-detail .story-section__copy::before { inset: -3rem -1.2rem -5rem; background: linear-gradient(180deg,rgba(8,9,11,.92) 0%,rgba(8,9,11,.68) 52%,rgba(8,9,11,0) 100%); }
   #hero { grid-template-rows: minmax(0,1fr) auto; align-items: stretch; gap: 1rem; padding-bottom: max(1rem,env(safe-area-inset-bottom)); }
-  #hero .story-section__copy { align-self: center; }
+  #hero .story-section__copy-slot { align-self: center; }
+  #hero .story-section__copy-viewport { justify-content: center; }
   #hero .attribution { position: static; align-self: end; width: 100%; font-size: .6rem; }
   .story-section__rail { display: none; }
   .attribution { bottom: 1rem; display: block; font-size: .6rem; }
@@ -175,13 +186,14 @@
   .loading-screen__logo { width: 2.1rem; height: 2.1rem; }
 }
 @media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
-  .story-section h1 { max-width: 11ch; font-size: clamp(4.15rem,9.25vw,5.25rem); line-height: .9; letter-spacing: -.055em; }
-  :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(3.45rem,7.25vw,4.6rem); line-height: .93; }
+  .story-section h1 { max-width: min(11.5ch,100%); font-size: clamp(4.15rem,9.25vw,5.25rem); line-height: .94; letter-spacing: -.055em; }
+  :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(3.45rem,7.25vw,4.6rem); line-height: .95; }
 }
 @media (max-width: 767px) and (orientation: portrait) {
   .story-section { padding-bottom: clamp(5.5rem,16svh,7rem); }
-  .story-section h1 { max-width: 11ch; font-size: clamp(2.6rem,11vw,3.65rem); line-height: .91; letter-spacing: -.055em; }
-  :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(2.35rem,9.5vw,3.25rem); line-height: .94; }
+  .story-section__copy-viewport { bottom: clamp(5.5rem,16svh,7rem); }
+  .story-section h1 { max-width: min(11.5ch,100%); font-size: clamp(2.6rem,11vw,3.65rem); line-height: .96; letter-spacing: -.055em; }
+  :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(2.35rem,9.5vw,3.25rem); line-height: .96; }
   .story-section__meta { gap: .65rem; margin-bottom: clamp(.7rem,2.5svh,1rem); font-size: clamp(.6rem,2.5vw,.66rem); }
   .story-section__meta span:first-child::after { width: 2rem; margin-left: .65rem; }
   .story-section__copy > p { max-width: 29rem; margin-top: clamp(1rem,3.5svh,1.35rem); font-size: clamp(.84rem,3.5vw,.92rem); line-height: 1.5; }
@@ -202,27 +214,45 @@
 }
 @media (max-width: 480px) and (max-height: 650px) and (orientation: portrait) {
   .story-section { padding-bottom: max(3rem,calc(env(safe-area-inset-bottom) + 2rem)); }
-  .story-section h1 { font-size: clamp(2.4rem,10vw,3rem); line-height: .92; }
+  .story-section__copy-viewport { bottom: max(3rem,calc(env(safe-area-inset-bottom) + 2rem)); }
+  .story-section h1 { font-size: clamp(2.4rem,10vw,3rem); line-height: .96; }
   :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(2.2rem,9vw,2.75rem); }
   .story-section__meta { margin-bottom: .65rem; }
   .story-section__copy > p { margin-top: .85rem; font-size: .82rem; }
   .story-cta { margin-top: 1rem; }
-  #rear-signature { padding-bottom: max(1.5rem,calc(env(safe-area-inset-bottom) + .75rem)); }
 }
-@media (max-width: 1024px) and (max-height: 500px) and (orientation: landscape) {
+@media (max-height: 650px) and (orientation: landscape) {
   :root { --page-pad: clamp(1.2rem,4vw,2.1rem); }
   .site-header { grid-template-columns: 1fr auto; padding-top: max(.75rem,calc(env(safe-area-inset-top) + .35rem)); padding-bottom: .75rem; }
   .site-header nav { display: none; }
   .header-index { --wheel-size: 2rem; grid-column: 2; }
   .wordmark__logo,.loading-screen__logo { width: 2rem; height: 2rem; }
   .story-section { padding-top: 4.75rem; padding-bottom: 1.75rem; }
+  .story-section__copy-viewport { top: 4.75rem; bottom: 1.75rem; }
   .story-section__meta { margin-bottom: .6rem; }
   .story-section h1 { font-size: clamp(2.25rem,6vw,3.75rem); }
   .story-section__copy > p { margin-top: .8rem; font-size: .82rem; line-height: 1.45; }
   .story-cta { min-height: 2.5rem; margin-top: .8rem; padding: .5rem 0; }
   #hero { grid-template-rows: minmax(0,1fr) auto; align-items: stretch; gap: .55rem; padding-bottom: max(.55rem,env(safe-area-inset-bottom)); }
-  #hero .story-section__copy { align-self: center; }
+  #hero .story-section__copy-slot { align-self: center; }
   #hero .attribution { position: static; align-self: end; width: 100%; font-size: .54rem; }
   .story-section__rail { display: none; }
 }
-@media (min-width: 1600px) { .story-section__copy { width: min(46rem,39vw); } }
+/* Embedded previews and split panes can be far shorter than a normal device viewport. */
+@media (max-height: 320px) and (orientation: landscape) {
+  .site-header,#hero .attribution { display: none; }
+  .story-section,#rear-seat-detail { --story-copy-width: min(42rem,calc(100vw - var(--page-pad) - var(--page-pad))); }
+  .story-section { padding-top: max(.25rem,env(safe-area-inset-top)); padding-bottom: max(.25rem,env(safe-area-inset-bottom)); }
+  .story-section__copy-viewport { top: max(.25rem,env(safe-area-inset-top)); bottom: max(.25rem,env(safe-area-inset-bottom)); }
+  .story-section h1,:is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { max-width: 100%; }
+  .story-section__copy > p { width: 100%; max-width: 34rem; }
+}
+@media (max-height: 220px) and (orientation: landscape) {
+  [data-story-copy] { transform: none !important; }
+  .story-section__meta { gap: .2rem .35rem; margin-bottom: clamp(.1rem,1.5svh,.3rem); font-size: clamp(.45rem,6svh,.53rem); line-height: 1.1; letter-spacing: .1em; }
+  .story-section__meta span:first-child::after { width: .8rem; margin-left: .35rem; }
+  .story-section h1,:is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(.7rem,min(4.2vw,18svh),2.375rem); line-height: 1; letter-spacing: -.045em; }
+  .story-section__copy > p { margin-top: clamp(.15rem,2svh,.45rem); font-size: clamp(.5rem,min(2vw,9svh),.625rem); line-height: 1.15; }
+  .story-cta { min-width: min(10rem,100%); min-height: clamp(1.1rem,18svh,1.375rem); gap: .5rem; margin-top: clamp(.15rem,2svh,.4rem); padding: .12rem 0; font-size: clamp(.45rem,6svh,.5625rem); }
+  .story-cta__icon { width: 1.1rem; height: .8rem; }
+}

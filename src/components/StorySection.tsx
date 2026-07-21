@@ -18,12 +18,16 @@ export function StorySection({ id, index, eyebrow, heading, body, align = 'left'
   const headingId = `${id}-heading`;
   return (
     <section id={id} className={`story-section story-section--${align}`} data-story-section={id} aria-labelledby={headingId}>
-      <div className='story-section__copy' data-story-copy>
-        <div className='story-section__meta'><span>{index}</span><span>{eyebrow}</span></div>
-        <h1 id={headingId}>{heading}</h1>
-        <p>{body}</p>
-        {ctaLabel && ctaHref ? <a className='story-cta' href={ctaHref}><span>{ctaLabel}</span><StoryFlowIcon /></a> : null}
-        {ctaLabel && onCta ? <button ref={ctaButtonRef} className='story-cta' type='button' onClick={onCta} disabled={ctaDisabled}><span>{ctaLabel}</span><StoryFlowIcon /></button> : null}
+      <div className='story-section__copy-slot'>
+        <div className='story-section__copy-viewport'>
+          <div className='story-section__copy' data-story-copy>
+            <div className='story-section__meta'><span>{index}</span><span>{eyebrow}</span></div>
+            <h1 id={headingId}>{heading}</h1>
+            <p>{body}</p>
+            {ctaLabel && ctaHref ? <a className='story-cta' href={ctaHref}><span>{ctaLabel}</span><StoryFlowIcon /></a> : null}
+            {ctaLabel && onCta ? <button ref={ctaButtonRef} className='story-cta' type='button' onClick={onCta} disabled={ctaDisabled}><span>{ctaLabel}</span><StoryFlowIcon /></button> : null}
+          </div>
+        </div>
       </div>
       {children}
       <span className='story-section__rail' aria-hidden='true' />

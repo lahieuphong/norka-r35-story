@@ -8,6 +8,10 @@ import { publishStoryProgress } from '../three/storyProgress';
 
 gsap.registerPlugin(ScrollTrigger);
 
+const COPY_FADE_DURATION = 0.4;
+const COPY_FADE_OUT_START = 0.22;
+const COPY_FADE_IN_START = 0.38;
+
 export interface CameraRigValues { readonly position: THREE.Vector3; readonly target: THREE.Vector3; fov: number; }
 interface Options { readonly ready: boolean; readonly reducedMotion: boolean; readonly rig: CameraRigValues; readonly shots: CameraShotSet; readonly waypoints: CameraWaypointSet; }
 interface PositionCurve { getPoint(t: number, target?: THREE.Vector3): THREE.Vector3; }
@@ -53,19 +57,25 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
 
     const context = gsap.context(() => {
       if (reducedMotion) {
-        gsap.set(copies, { autoAlpha: 1, yPercent: 0 });
+        gsap.set(copies, { autoAlpha: 0, yPercent: 0 });
+        const firstCopy = copies[0];
+        if (firstCopy) gsap.set(firstCopy, { autoAlpha: 1 });
         STORY_SHOT_ORDER.forEach((name, index) => {
           const section = sections[index];
           const copy = copies[index];
           if (!section || !copy) return;
+          const activate = (): void => {
+            copyShot(rig, shots, name);
+            gsap.set(copies, { autoAlpha: 0 });
+            gsap.set(copy, { autoAlpha: 1 });
+          };
           ScrollTrigger.create({
             id: `${STORY_TRIGGER_PREFIX}-reduced-${name}`,
             trigger: section,
-            start: 'top 55%',
-            end: 'bottom 45%',
-            onEnter: () => copyShot(rig, shots, name),
-            onEnterBack: () => copyShot(rig, shots, name),
-            onToggle: (self) => { gsap.to(copy, { autoAlpha: self.isActive ? 1 : 0.58, duration: 0.12, overwrite: true }); },
+            start: 'top 50%',
+            end: 'bottom 50%',
+            onEnter: activate,
+            onEnterBack: activate,
           });
         });
         ScrollTrigger.create({
@@ -90,7 +100,9 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
           trigger: root,
           start: 'top top',
           end: 'bottom bottom',
-          scrub: 0.72,
+          // Keep copy and camera state attached to the actual scroll position.
+          // A damped scrub leaves the active section blank after anchor jumps.
+          scrub: true,
           invalidateOnRefresh: true,
           markers: import.meta.env.DEV && import.meta.env.VITE_SCROLL_MARKERS === 'true',
           onUpdate: (self) => setProgress(self.progress),
@@ -153,8 +165,10 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
         }
         timeline.to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2], duration: 1 }, start);
         timeline.to(rig, { fov: shot.fov, duration: 1 }, start);
-        timeline.to(outgoing, { autoAlpha: 0, yPercent: -6, duration: 0.3, ease: 'power2.in' }, start + 0.06);
-        timeline.fromTo(incoming, { autoAlpha: 0, yPercent: 8 }, { autoAlpha: 1, yPercent: 0, duration: 0.34, ease: 'power2.out' }, start + 0.58);
+        // Crossfade around the viewport handoff. The overlap guarantees that
+        // at least one copy remains legible while scrolling in either direction.
+        timeline.to(outgoing, { autoAlpha: 0, yPercent: -6, duration: COPY_FADE_DURATION, ease: 'power2.in' }, start + COPY_FADE_OUT_START);
+        timeline.fromTo(incoming, { autoAlpha: 0, yPercent: 8 }, { autoAlpha: 1, yPercent: 0, duration: COPY_FADE_DURATION, ease: 'power2.out' }, start + COPY_FADE_IN_START);
       }
     }, root);
 
