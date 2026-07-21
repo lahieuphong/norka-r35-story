@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import * as THREE from 'three';
 import { STORY_SHOT_ORDER, type CameraShotSet, type CameraWaypointSet, type ShotName } from '../three/cameraShots';
 import { cameraDebugSnapshot, disableStoryScrollTriggers, isStoryScrollSuspended, STORY_TRIGGER_PREFIX, storyVisualState } from '../three/storyState';
+import { publishStoryProgress } from '../three/storyProgress';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -18,9 +19,11 @@ function copyShot(rig: CameraRigValues, shots: CameraShotSet, name: ShotName): v
   cameraDebugSnapshot.section = name;
 }
 function setProgress(progress: number): void {
-  const index = Math.min(STORY_SHOT_ORDER.length - 1, Math.max(0, Math.round(progress * (STORY_SHOT_ORDER.length - 1))));
-  cameraDebugSnapshot.progress = progress;
+  const clampedProgress = Math.min(1, Math.max(0, progress));
+  const index = Math.min(STORY_SHOT_ORDER.length - 1, Math.max(0, Math.round(clampedProgress * (STORY_SHOT_ORDER.length - 1))));
+  cameraDebugSnapshot.progress = clampedProgress;
   cameraDebugSnapshot.section = STORY_SHOT_ORDER[index] ?? 'hero';
+  publishStoryProgress(clampedProgress, index + 1, STORY_SHOT_ORDER.length);
 }
 
 export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: Options): void {
@@ -59,6 +62,7 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
           start: 'top top',
           end: 'bottom bottom',
           onUpdate: (self) => setProgress(self.progress),
+          onRefresh: (self) => setProgress(self.progress),
         });
         return;
       }
@@ -78,6 +82,7 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
           invalidateOnRefresh: true,
           markers: import.meta.env.DEV && import.meta.env.VITE_SCROLL_MARKERS === 'true',
           onUpdate: (self) => setProgress(self.progress),
+          onRefresh: (self) => setProgress(self.progress),
         },
       });
 
