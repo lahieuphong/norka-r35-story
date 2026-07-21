@@ -52,7 +52,7 @@ For `prefers-reduced-motion`, the camera switches between static desktop/compact
 
 ## Refined camera compositions
 
-The camera shots were visually re-tuned without modifying the model, normalization, model scale, CSS transforms, or timeline architecture. The exterior sequence now follows one direction through Hero → Performance → Aerodynamics → a straight-on Rear Signature → rear-left Precision, then enters the existing detailed cabin sequence. A later coverage pass also widens the Digital Cluster view to include the center display and routes the exterior-to-cockpit move through the rear cabin instead of through seat geometry. The responsive review viewports were:
+The camera shots were visually re-tuned without modifying the model, normalization, model scale, CSS transforms, or timeline architecture. The story now opens at 3D Experience, follows Performance → Aerodynamics → a straight-on Rear Signature → rear-left Precision, enters the detailed cabin sequence, and finishes at Engineered Beyond Limits. The two reordered endpoint transitions use continuous camera curves: Explore rises cleanly into Performance, while the second row exits through the rear glass, clears the wing, and orbits into the final Hero composition. A later coverage pass also widens the Digital Cluster view to include the center display and routes the exterior-to-cockpit move through the rear cabin instead of through seat geometry. The responsive review viewports were:
 
 - Desktop: `1440 × 900`
 - Tablet landscape: `1024 × 768`
@@ -65,7 +65,7 @@ Desktop views use `desktopShots`; phones and tablets in portrait up to 1024px us
 
 ## Explore mode
 
-The final CTA disables story ScrollTriggers without resetting their visual state, locks the page at its current scroll offset, eases to the final Explore composition, then enables OrbitControls. Pan is disabled, zoom is bounded, and polar limits prevent moving below the floor. Drag/touch, wheel/pinch, arrow keys, and `+`/`-` are supported. Exit disables controls, restores the final story shot, restores the same scroll offset, and re-enables ScrollTriggers without returning to the top.
+The opening Explore CTA disables story ScrollTriggers without resetting their visual state, locks the page at its current scroll offset, eases to the opening Explore composition, then enables OrbitControls. Pan is disabled, zoom is bounded, and polar limits prevent moving below the floor. Drag/touch, wheel/pinch, arrow keys, and `+`/`-` are supported. Exit disables controls, restores the opening story shot, restores the same scroll offset, and re-enables ScrollTriggers without jumping to another section.
 
 ## Development camera HUD
 

@@ -17,26 +17,33 @@ export function Lighting({ isMobile }: Props) {
       <directionalLight
         castShadow
         color="#ffffff"
-        intensity={1.5}
-        position={[-4.5, 6.5, 5.5]}
+        intensity={1.55}
+        position={[6.5, 7.25, -8.5]}
         shadow-mapSize-width={isMobile ? 1024 : 2048}
         shadow-mapSize-height={isMobile ? 1024 : 2048}
         shadow-camera-near={0.5}
-        shadow-camera-far={18}
-        shadow-camera-left={-5}
-        shadow-camera-right={5}
-        shadow-camera-top={5}
-        shadow-camera-bottom={-5}
-        shadow-bias={-0.00015}
+        shadow-camera-far={24}
+        shadow-camera-left={-6}
+        shadow-camera-right={6}
+        shadow-camera-top={6}
+        shadow-camera-bottom={-6}
+        shadow-bias={-0.00008}
+        shadow-normalBias={0.015}
+        shadow-intensity={1}
+        shadow-radius={isMobile ? 1.4 : 2.2}
       />
       <directionalLight color="#ffffff" intensity={0.82} position={[5.5, 3.2, -4.5]} />
       <spotLight color="#ffffff" intensity={2.8} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
       <rectAreaLight color="#ffffff" intensity={2.15} width={5.5} height={1.2} position={[0, 5.5, 1]} rotation={[-Math.PI / 2, 0, 0]} />
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}>
         <planeGeometry args={[80, 80]} />
-        <meshStandardMaterial color="#cfd7de" roughness={0.94} metalness={0.01} />
+        <meshStandardMaterial color="#c1cbd3" roughness={0.97} metalness={0} />
       </mesh>
-      <ContactShadows color="#263746" position={[0, 0.012, 0]} scale={9} opacity={0.34} blur={isMobile ? 2.7 : 3.1} far={3.8} resolution={isMobile ? 512 : 1024} frames={1} />
+      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.004, 0]}>
+        <planeGeometry args={[80, 80]} />
+        <shadowMaterial transparent color="#182b39" opacity={isMobile ? 0.34 : 0.42} depthWrite={false} />
+      </mesh>
+      <ContactShadows color="#182a36" position={[0, 0.012, 0]} scale={[3.6, 6.8]} opacity={isMobile ? 0.44 : 0.5} blur={isMobile ? 2.8 : 3.2} far={0.75} resolution={isMobile ? 512 : 1024} frames={1} />
     </>
   );
 }

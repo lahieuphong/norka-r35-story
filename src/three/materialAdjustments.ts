@@ -174,7 +174,7 @@ export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMa
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
     object.castShadow = true;
-    object.receiveShadow = true;
+    object.receiveShadow = false;
 
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     if (materials.some((material) => SHADOWLESS_GLASS.has(material.name))) {

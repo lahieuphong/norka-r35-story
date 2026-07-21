@@ -6,6 +6,12 @@ interface IndicatorState { readonly current: number; readonly total: number; }
 
 const WHEEL_TICKS = Array.from({ length: 12 }, (_, index) => index * 30);
 const formatIndex = (value: number): string => value.toString().padStart(2, '0');
+const NAV_ITEMS = [
+  { label: 'Explore', href: '#explore', first: 1, last: 1 },
+  { label: 'Exterior', href: '#performance', first: 2, last: 5 },
+  { label: 'Interior', href: '#interior', first: 6, last: 11 },
+  { label: 'Overview', href: '#hero', first: 12, last: 12 },
+] as const;
 
 export function Header({ exploreActive }: Props) {
   const indicatorRef = useRef<HTMLDivElement>(null);
@@ -23,11 +29,16 @@ export function Header({ exploreActive }: Props) {
 
   return (
     <header className={`site-header${exploreActive ? ' is-muted' : ''}`} inert={exploreActive}>
-      <a className='wordmark' href='#hero' aria-label='NORKA R35 — back to hero'>
+      <a className='wordmark' href='#explore' aria-label='NORKA R35 — back to the beginning'>
         <img className='wordmark__logo' src='/brand/norka-compass-logo-512.png' width='44' height='44' alt='' aria-hidden='true' />
         <span className='wordmark__text'><span>NORKA</span><strong>R35</strong></span>
       </a>
-      <nav aria-label='Story sections'><a href='#performance'>Power</a><a href='#aerodynamics'>Design</a><a href='#interior'>Interior</a><a href='#explore'>Explore</a></nav>
+      <nav aria-label='Story chapters'>
+        {NAV_ITEMS.map((item) => {
+          const active = indicator.current >= item.first && indicator.current <= item.last;
+          return <a key={item.href} href={item.href} className={active ? 'is-active' : undefined} aria-current={active ? 'location' : undefined}>{item.label}</a>;
+        })}
+      </nav>
       <div
         ref={indicatorRef}
         className='header-index'

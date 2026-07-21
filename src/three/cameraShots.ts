@@ -1,9 +1,10 @@
-export const STORY_SHOT_ORDER = ['hero', 'performance', 'aerodynamics', 'rear-signature', 'precision', 'interior', 'steering', 'instruments', 'front-seats', 'rear-seats', 'rear-seat-detail', 'explore'] as const;
+export const STORY_SHOT_ORDER = ['explore', 'performance', 'aerodynamics', 'rear-signature', 'precision', 'interior', 'steering', 'instruments', 'front-seats', 'rear-seats', 'rear-seat-detail', 'hero'] as const;
 export type ShotName = (typeof STORY_SHOT_ORDER)[number];
+export const INITIAL_STORY_SHOT = STORY_SHOT_ORDER[0];
 export type VectorTuple = readonly [number, number, number];
 export interface CameraShot { readonly position: VectorTuple; readonly target: VectorTuple; readonly fov: number; }
 export type CameraShotSet = Readonly<Record<ShotName, CameraShot>>;
-export type CameraWaypointSet = Readonly<Record<Exclude<ShotName, 'hero'>, VectorTuple>>;
+export type CameraWaypointSet = Readonly<Record<Exclude<ShotName, typeof INITIAL_STORY_SHOT>, VectorTuple>>;
 
 export const desktopShots: CameraShotSet = {
   hero: { position: [-7.15, 1.72, 7.45], target: [-2.45, 0.47, 0.68], fov: 31.5 },
@@ -44,7 +45,7 @@ export const landscapeShots: CameraShotSet = {
 };
 
 export const desktopWaypoints: CameraWaypointSet = {
-  performance: [-2.5, 3.2, 8.5],
+  performance: [2.75, 3.6, 7.9],
   aerodynamics: [4.5, 3.5, 5.8],
   'rear-signature': [8.5, 2.8, -7],
   precision: [-3.15, 1, -6.55],
@@ -54,11 +55,11 @@ export const desktopWaypoints: CameraWaypointSet = {
   'front-seats': [-0.3, 0.94, 0.08],
   'rear-seats': [0, 1.02, -0.05],
   'rear-seat-detail': [0, 1.04, -0.36],
-  explore: [-0.24, 1.4, -2.6],
+  hero: [-0.24, 1.4, -2.6],
 };
 
 export const mobileWaypoints: CameraWaypointSet = {
-  performance: [-1.15, 1.9, 8],
+  performance: [6.6, 4.75, 10.2],
   aerodynamics: [10.4, 5.1, 7.3],
   'rear-signature': [8, 3.5, -10.5],
   precision: [-4.2, 1.3, -8],
@@ -68,7 +69,7 @@ export const mobileWaypoints: CameraWaypointSet = {
   'front-seats': [-0.3, 0.94, 0.08],
   'rear-seats': [0, 1, -0.04],
   'rear-seat-detail': [0, 1.08, -0.36],
-  explore: [-0.18, 1.45, -2.6],
+  hero: [-0.18, 1.45, -2.6],
 };
 
 export function usesCompactCamera(width: number, height: number): boolean {

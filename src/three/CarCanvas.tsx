@@ -8,7 +8,7 @@ import { CameraRig } from './CameraRig';
 import { CarModel, type ModelReadyDetails } from './CarModel';
 import type { ExplorePhase } from './experienceTypes';
 import { Lighting } from './Lighting';
-import { getShotSet, usesCompactCamera, usesLandscapeCamera } from './cameraShots';
+import { getShotSet, INITIAL_STORY_SHOT, usesCompactCamera, usesLandscapeCamera } from './cameraShots';
 
 interface Props {
   readonly modelReady: boolean;
@@ -94,7 +94,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
 export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete }: Props) {
   const profile = useProfile();
   const controlsRef = useRef<OrbitControlsImpl>(null);
-  const shot = useMemo(() => getShotSet(profile.compact, profile.landscape).hero, [profile.compact, profile.landscape]);
+  const shot = useMemo(() => getShotSet(profile.compact, profile.landscape)[INITIAL_STORY_SHOT], [profile.compact, profile.landscape]);
   const interactive = phase === 'explore';
   useEffect(() => {
     if (!interactive) return;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import type { ShotName } from './cameraShots';
+import { INITIAL_STORY_SHOT, type ShotName } from './cameraShots';
 export const STORY_TRIGGER_PREFIX = 'norka-story';
 let storyScrollSuspended = false;
 export const storyVisualState = { glassOpacity: 1 };
@@ -15,7 +15,7 @@ export const cameraDebugSnapshot: {
   target: new THREE.Vector3(),
   fov: 32,
   progress: 0,
-  section: 'hero',
+  section: INITIAL_STORY_SHOT,
 };
 export function getStoryScrollTriggers(): ScrollTrigger[] {
   return ScrollTrigger.getAll().filter((trigger) => {

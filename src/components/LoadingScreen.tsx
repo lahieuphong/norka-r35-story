@@ -61,7 +61,6 @@ export function LoadingScreen({ sceneReady, failed, reducedMotion }: Props) {
   return (
     <div className={`loading-screen${complete ? ' is-ready' : ''}${exiting ? ' is-complete' : ''}`} style={loadingStyle} aria-busy={!complete}>
       <div className='loading-screen__heat' aria-hidden='true' />
-      <div className='loading-screen__aperture' aria-hidden='true' />
       <div className="loading-screen__topline">
         <span className="loading-screen__brand"><img className="loading-screen__logo" src="/brand/norka-compass-logo-512.png" width="44" height="44" alt="" aria-hidden="true" /><span>NORKA R35</span></span>
         <span>REAL-TIME 3D</span>

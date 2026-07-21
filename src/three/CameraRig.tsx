@@ -4,7 +4,7 @@ import gsap from 'gsap';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { useScrollStory, type CameraRigValues } from '../hooks/useScrollStory';
-import { getShotSet, getWaypointSet } from './cameraShots';
+import { getShotSet, getWaypointSet, INITIAL_STORY_SHOT } from './cameraShots';
 import type { ExplorePhase } from './experienceTypes';
 import { cameraDebugSnapshot, storyVisualState } from './storyState';
 
@@ -24,9 +24,9 @@ export function CameraRig({ controlsRef, compact, landscape, modelReady, phase, 
   const shots = getShotSet(compact, landscape);
   const waypoints = getWaypointSet(compact);
   const rigRef = useRef<CameraRigValues>({
-    position: new THREE.Vector3(...shots.hero.position),
-    target: new THREE.Vector3(...shots.hero.target),
-    fov: shots.hero.fov,
+    position: new THREE.Vector3(...shots[INITIAL_STORY_SHOT].position),
+    target: new THREE.Vector3(...shots[INITIAL_STORY_SHOT].target),
+    fov: shots[INITIAL_STORY_SHOT].fov,
   });
   const rig = rigRef.current;
   const activeTween = useRef<gsap.core.Timeline | null>(null);
