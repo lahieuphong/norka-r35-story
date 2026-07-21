@@ -3,6 +3,8 @@ import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
+import { KTX2Loader, type GLTFLoader } from 'three-stdlib';
+import { shouldUseMobileModel } from './deviceProfile';
 import { applyMaterialAdjustments, type ReferenceMaterialMaps } from './materialAdjustments';
 import { computeModelNormalization, type ModelNormalization } from './modelNormalization';
 import { storyVisualState } from './storyState';
@@ -11,18 +13,31 @@ const URLS = { original: '/models/norka-r35-original.glb', desktop: '/models/nor
 type ModelVariant = keyof typeof URLS;
 function selectRuntimeVariant(): ModelVariant {
   const forced = import.meta.env.VITE_MODEL_VARIANT;
-  if (forced) return forced;
-  if (typeof window === 'undefined') return 'desktop';
-  const touchPhoneLandscape = Math.min(window.innerWidth, window.innerHeight) <= 600
-    && (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0);
-  return window.matchMedia('(max-width: 767px)').matches || touchPhoneLandscape ? 'mobile' : 'desktop';
+  if (forced === 'original' || forced === 'desktop' || forced === 'mobile') return forced;
+  return shouldUseMobileModel() ? 'mobile' : 'desktop';
 }
 export const RUNTIME_MODEL_VARIANT = selectRuntimeVariant();
 export const RUNTIME_MODEL_URL = URLS[RUNTIME_MODEL_VARIANT];
 export interface ModelAttribution { readonly title: string; readonly author: string; readonly license: string; }
 export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-norka_varis_r35', author: 'MattDoesBlender', license: 'CC BY-NC-SA 4.0' };
 export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
-interface Props { readonly onReady: (details: ModelReadyDetails) => void; }
+interface Props {
+  readonly anisotropy: number;
+  readonly onReady: (details: ModelReadyDetails) => void;
+}
+
+const KTX2_LOADERS = new WeakMap<THREE.WebGLRenderer, KTX2Loader>();
+function configureKTX2Loader(loader: GLTFLoader, renderer: THREE.WebGLRenderer): void {
+  let ktx2Loader = KTX2_LOADERS.get(renderer);
+  if (!ktx2Loader) {
+    ktx2Loader = new KTX2Loader()
+      .setTranscoderPath('/basis/')
+      .setWorkerLimit(2)
+      .detectSupport(renderer);
+    KTX2_LOADERS.set(renderer, ktx2Loader);
+  }
+  loader.setKTX2Loader(ktx2Loader);
+}
 
 function cleanMetadataValue(value: unknown, fallback: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) return fallback;
@@ -95,9 +110,10 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ onReady }: Props) {
-  const gltf = useGLTF(RUNTIME_MODEL_URL, true, true);
-  const maxAnisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy());
+export function CarModel({ anisotropy, onReady }: Props) {
+  const renderer = useThree((state) => state.gl);
+  const gltf = useGLTF(RUNTIME_MODEL_URL, false, true, (loader) => configureKTX2Loader(loader, renderer));
+  const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
   const reported = useRef(false);
   const renderedGlassOpacity = useRef(Number.NaN);
   const prepared = useMemo(() => {
@@ -107,7 +123,7 @@ export function CarModel({ onReady }: Props) {
     isolateSceneMaterials(scene);
     const normalization = computeModelNormalization(scene);
     const referenceMaps = readEmbeddedReferenceMaps(scene);
-    applyMaterialAdjustments(scene, referenceMaps, Math.min(8, maxAnisotropy));
+    applyMaterialAdjustments(scene, referenceMaps, Math.min(anisotropy, maxAnisotropy));
     let nodeCount = 0;
     let meshCount = 0;
     const materials = new Set<THREE.Material>();
@@ -138,7 +154,7 @@ export function CarModel({ onReady }: Props) {
       ownedMaterials: [...materials],
       ownedTextures: [...textures],
     };
-  }, [gltf.parser.json, gltf.scene, maxAnisotropy]);
+  }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy]);
   useEffect(() => {
     renderedGlassOpacity.current = Number.NaN;
     return () => {
@@ -161,4 +177,3 @@ export function CarModel({ onReady }: Props) {
   }, [onReady, prepared]);
   return <group position={prepared.normalization.offset}><primitive object={prepared.scene} dispose={null} /></group>;
 }
-useGLTF.preload(RUNTIME_MODEL_URL, true, true);

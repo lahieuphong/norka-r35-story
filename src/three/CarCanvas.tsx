@@ -6,9 +6,10 @@ import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { CameraRig } from './CameraRig';
 import { CarModel, type ModelReadyDetails } from './CarModel';
+import { readDeviceProfile, type DeviceProfile } from './deviceProfile';
 import type { ExplorePhase } from './experienceTypes';
 import { Lighting } from './Lighting';
-import { getShotSet, INITIAL_STORY_SHOT, usesCompactCamera, usesLandscapeCamera } from './cameraShots';
+import { getShotSet, INITIAL_STORY_SHOT } from './cameraShots';
 
 interface Props {
   readonly modelReady: boolean;
@@ -19,26 +20,11 @@ interface Props {
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
 }
-interface Profile { readonly isMobile: boolean; readonly compact: boolean; readonly landscape: boolean; readonly lowEnd: boolean; readonly dpr: number; }
-function readProfile(): Profile {
-  const touchPhoneLandscape = Math.min(window.innerWidth, window.innerHeight) <= 600
-    && (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0);
-  const isMobile = window.matchMedia('(max-width: 767px)').matches || touchPhoneLandscape;
-  const compact = usesCompactCamera(window.innerWidth, window.innerHeight);
-  const landscape = usesLandscapeCamera(window.innerWidth, window.innerHeight);
-  const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
-  const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
-  const lowEnd = isMobile && (lowMemory || lowCpu);
-  // Keep enough physical pixels for fine bodywork and cockpit decals on
-  // high-density displays. Low-end phones still use a conservative ceiling.
-  const cap = lowEnd ? 1.25 : isMobile ? 1.5 : 2;
-  return { isMobile, compact, landscape, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
-}
-function useProfile(): Profile {
-  const [profile, setProfile] = useState(readProfile);
+function useProfile(): DeviceProfile {
+  const [profile, setProfile] = useState(readDeviceProfile);
   useEffect(() => {
     let frame = 0;
-    const update = (): void => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => setProfile(readProfile())); };
+    const update = (): void => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => setProfile(readDeviceProfile())); };
     window.addEventListener('resize', update, { passive: true });
     return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', update); };
   }, []);
@@ -50,28 +36,11 @@ function VisibilityController() {
   useEffect(() => {
     const change = (): void => {
       if (document.visibilityState === 'hidden') setFrameloop('never');
-      else { setFrameloop('always'); invalidate(); }
+      else { setFrameloop('demand'); invalidate(); }
     };
     document.addEventListener('visibilitychange', change);
     return () => document.removeEventListener('visibilitychange', change);
   }, [invalidate, setFrameloop]);
-  return null;
-}
-function StaticShadowMap({ enabled, isMobile }: { readonly enabled: boolean; readonly isMobile: boolean }) {
-  const gl = useThree((state) => state.gl);
-  const invalidate = useThree((state) => state.invalidate);
-  useEffect(() => {
-    if (!enabled) return;
-    const previousAutoUpdate = gl.shadowMap.autoUpdate;
-    gl.shadowMap.autoUpdate = false;
-    gl.shadowMap.needsUpdate = true;
-    invalidate();
-    return () => {
-      gl.shadowMap.autoUpdate = previousAutoUpdate;
-      gl.shadowMap.needsUpdate = true;
-      invalidate();
-    };
-  }, [enabled, gl, invalidate, isMobile]);
   return null;
 }
 function WebGLFallback({ onFailure }: { readonly onFailure: () => void }) {
@@ -122,25 +91,24 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
       <CanvasBoundary onFailure={onWebGLFailure}>
         <Canvas
           dpr={profile.dpr}
-          shadows={!profile.lowEnd}
+          frameloop="demand"
+          shadows={false}
           camera={{ position: [...shot.position], fov: shot.fov, near: 0.05, far: 100 }}
-          gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }}
+          gl={{ antialias: profile.antialias, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }}
           onCreated={({ gl }) => {
             gl.outputColorSpace = THREE.SRGBColorSpace;
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 0.92;
             gl.setClearColor('#e8edf2', 1);
-            gl.shadowMap.enabled = !profile.lowEnd;
-            gl.shadowMap.type = THREE.PCFShadowMap;
+            gl.shadowMap.enabled = false;
           }}
         >
           <color attach="background" args={['#e8edf2']} />
           <VisibilityController />
-          <StaticShadowMap enabled={modelReady && !profile.lowEnd} isMobile={profile.isMobile} />
           <CameraRig controlsRef={controlsRef} compact={profile.compact} landscape={profile.landscape} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
           <Suspense fallback={null}>
-            <Lighting isMobile={profile.isMobile} />
-            <CarModel onReady={onModelReady} />
+            <Lighting shadowResolution={profile.lowEnd || profile.isMobile ? 256 : 512} />
+            <CarModel anisotropy={profile.anisotropy} onReady={onModelReady} />
           </Suspense>
           <OrbitControls ref={controlsRef} enabled={interactive} enableDamping dampingFactor={0.075} enablePan={false} enableZoom enableRotate minDistance={profile.isMobile ? 4.4 : 3.4} maxDistance={profile.isMobile ? 13.5 : 10.5} minPolarAngle={0.34} maxPolarAngle={Math.PI * 0.49} rotateSpeed={0.58} zoomSpeed={0.72} />
         </Canvas>

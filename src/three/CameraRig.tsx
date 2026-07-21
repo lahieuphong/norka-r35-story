@@ -21,6 +21,7 @@ interface Props {
 
 export function CameraRig({ controlsRef, compact, landscape, modelReady, phase, reducedMotion, onEnterComplete, onExitComplete }: Props) {
   const camera = useThree((state) => state.camera);
+  const invalidate = useThree((state) => state.invalidate);
   const shots = getShotSet(compact, landscape);
   const waypoints = getWaypointSet(compact);
   const rigRef = useRef<CameraRigValues>({
@@ -31,7 +32,7 @@ export function CameraRig({ controlsRef, compact, landscape, modelReady, phase, 
   const rig = rigRef.current;
   const activeTween = useRef<gsap.core.Timeline | null>(null);
 
-  useScrollStory({ ready: modelReady, reducedMotion, rig, shots, waypoints });
+  useScrollStory({ ready: modelReady, reducedMotion, rig, shots, waypoints, onSceneChange: invalidate });
 
   useEffect(() => {
     activeTween.current?.kill();
@@ -40,7 +41,7 @@ export function CameraRig({ controlsRef, compact, landscape, modelReady, phase, 
     if (phase === 'entering') {
       const shot = shots.explore;
       const duration = reducedMotion ? 0.01 : 1.05;
-      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: true }, onComplete: onEnterComplete })
+      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: true }, onUpdate: invalidate, onComplete: onEnterComplete })
         .to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2] }, 0)
         .to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2] }, 0)
         .to(rig, { fov: shot.fov }, 0);
@@ -51,13 +52,13 @@ export function CameraRig({ controlsRef, compact, landscape, modelReady, phase, 
       if (controls) rig.target.copy(controls.target);
       if (camera instanceof THREE.PerspectiveCamera) rig.fov = camera.fov;
       const duration = reducedMotion ? 0.01 : 0.9;
-      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: true }, onComplete: onExitComplete })
+      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: true }, onUpdate: invalidate, onComplete: onExitComplete })
         .to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2] }, 0)
         .to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2] }, 0)
         .to(rig, { fov: shot.fov }, 0);
     }
     return () => { activeTween.current?.kill(); activeTween.current = null; };
-  }, [camera, controlsRef, onEnterComplete, onExitComplete, phase, reducedMotion, rig, shots]);
+  }, [camera, controlsRef, invalidate, onEnterComplete, onExitComplete, phase, reducedMotion, rig, shots]);
 
   useFrame(() => {
     const controls = controlsRef.current;

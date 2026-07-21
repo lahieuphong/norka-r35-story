@@ -13,7 +13,14 @@ const COPY_FADE_OUT_START = 0.22;
 const COPY_FADE_IN_START = 0.38;
 
 export interface CameraRigValues { readonly position: THREE.Vector3; readonly target: THREE.Vector3; fov: number; }
-interface Options { readonly ready: boolean; readonly reducedMotion: boolean; readonly rig: CameraRigValues; readonly shots: CameraShotSet; readonly waypoints: CameraWaypointSet; }
+interface Options {
+  readonly ready: boolean;
+  readonly reducedMotion: boolean;
+  readonly rig: CameraRigValues;
+  readonly shots: CameraShotSet;
+  readonly waypoints: CameraWaypointSet;
+  readonly onSceneChange: () => void;
+}
 interface PositionCurve { getPoint(t: number, target?: THREE.Vector3): THREE.Vector3; }
 
 function copyShot(rig: CameraRigValues, shots: CameraShotSet, name: ShotName): void {
@@ -42,7 +49,7 @@ function setProgress(progress: number): void {
   publishStoryProgress(clampedProgress, index + 1, STORY_SHOT_ORDER.length);
 }
 
-export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: Options): void {
+export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, onSceneChange }: Options): void {
   useLayoutEffect(() => {
     if (!ready) return;
     const root = document.querySelector<HTMLElement>('[data-story-root]');
@@ -54,6 +61,7 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
     copyShot(rig, shots, INITIAL_STORY_SHOT);
     storyVisualState.glassOpacity = 1;
     setProgress(0);
+    onSceneChange();
 
     const context = gsap.context(() => {
       if (reducedMotion) {
@@ -68,6 +76,7 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
             copyShot(rig, shots, name);
             gsap.set(copies, { autoAlpha: 0 });
             gsap.set(copy, { autoAlpha: 1 });
+            onSceneChange();
           };
           ScrollTrigger.create({
             id: `${STORY_TRIGGER_PREFIX}-reduced-${name}`,
@@ -95,6 +104,7 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
       gsap.set(firstCopy, { autoAlpha: 1, yPercent: 0 });
       const timeline = gsap.timeline({
         defaults: { ease: 'none' },
+        onUpdate: onSceneChange,
         scrollTrigger: {
           id: `${STORY_TRIGGER_PREFIX}-master`,
           trigger: root,
@@ -177,5 +187,5 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
     let cancelled = false;
     void document.fonts.ready.then(() => requestAnimationFrame(() => { if (!cancelled) ScrollTrigger.refresh(); }));
     return () => { cancelled = true; storyVisualState.glassOpacity = 1; context.revert(); };
-  }, [ready, reducedMotion, rig, shots, waypoints]);
+  }, [onSceneChange, ready, reducedMotion, rig, shots, waypoints]);
 }

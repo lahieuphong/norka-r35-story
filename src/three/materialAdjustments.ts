@@ -173,7 +173,9 @@ export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMa
   const visited = new Set<THREE.Material>();
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
-    object.castShadow = true;
+    // A single baked contact-shadow pass replaces the directional shadow map,
+    // avoiding a duplicate 195-mesh depth pass and its persistent GPU target.
+    object.castShadow = false;
     object.receiveShadow = false;
 
     const materials = Array.isArray(object.material) ? object.material : [object.material];

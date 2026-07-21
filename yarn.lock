@@ -693,10 +693,22 @@ its-fine@^2.0.0:
   dependencies:
     "@types/react-reconciler" "^0.28.9"
 
+ktx-parse@^0.7.1:
+  version "0.7.1"
+  resolved "https://registry.yarnpkg.com/ktx-parse/-/ktx-parse-0.7.1.tgz#d41514256d7d63acb8ef6ae62dc66f16efc1c39c"
+  integrity sha512-FeA3g56ksdFNwjXJJsc1CCc7co+AJYDp6ipIp878zZ2bU8kWROatLYf39TQEd4/XRSUvBXovQ8gaVKWPXsCLEQ==
+
 ktx-parse@^1.1.0:
   version "1.1.0"
   resolved "https://registry.yarnpkg.com/ktx-parse/-/ktx-parse-1.1.0.tgz#1077c87776ddabfc32fc01f644f6ad8f8890abf8"
   integrity sha512-mKp3y+FaYgR7mXWAbyyzpa/r1zDWeaunH+INJO4fou3hb45XuNSwar+7llrRyvpMWafxSIi99RNFJ05MHedaJQ==
+
+ktx2-encoder@0.5.3:
+  version "0.5.3"
+  resolved "https://registry.yarnpkg.com/ktx2-encoder/-/ktx2-encoder-0.5.3.tgz#36f314c1618d30cb0b23baaf0a645e67d5cc9b08"
+  integrity sha512-VkoccU/EHSf1690w6znOhp2Hz4UJuKMnfuZhtaymVYge3okU64myyZ/v1Wui926rDuAoi1LfVNqilKm/k4nlqQ==
+  dependencies:
+    ktx-parse "^0.7.1"
 
 lie@^3.0.2:
   version "3.3.0"
