@@ -97,7 +97,7 @@ export function App() {
         <StorySection id="explore" index="12" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || phase !== 'story'} ctaButtonRef={exploreButtonRef}><Attribution model={modelAttribution} /></StorySection>
       </main>
       <ExploreOverlay phase={phase} onExit={exitExplore} />
-      <LoadingScreen sceneReady={modelReady} failed={webglFailed} />
+      <LoadingScreen sceneReady={modelReady} failed={webglFailed} reducedMotion={reducedMotion} />
       <span className="sr-only" aria-live="polite">{phase === 'explore' ? 'Interactive 3D controls enabled.' : ''}</span>
       {CameraDebugHUD ? <Suspense fallback={null}><CameraDebugHUD /></Suspense> : null}
     </div>
