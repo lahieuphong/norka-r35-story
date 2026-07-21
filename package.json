@@ -9,8 +9,11 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
     "inspect:model": "node scripts/inspect-model.mjs public/models/norka-r35-desktop.glb",
+    "inspect:model:mobile": "node scripts/inspect-model.mjs public/models/norka-r35-mobile.glb",
     "inspect:model:original": "node scripts/inspect-model.mjs public/models/norka-r35-original.glb",
-    "optimize:model": "node scripts/optimize-model.mjs --variant desktop"
+    "optimize:model": "node scripts/optimize-model.mjs --variant all",
+    "optimize:model:desktop": "node scripts/optimize-model.mjs --variant desktop",
+    "optimize:model:mobile": "node scripts/optimize-model.mjs --variant mobile"
   },
   "dependencies": {
     "@react-three/drei": "10.7.7",
@@ -30,11 +33,12 @@
     "@types/three": "0.185.1",
     "@vitejs/plugin-react": "6.0.3",
     "meshoptimizer": "1.2.0",
+    "sharp": "0.34.5",
     "typescript": "7.0.2",
     "vite": "8.1.5"
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "packageManager": "yarn@1.22.22"
 }

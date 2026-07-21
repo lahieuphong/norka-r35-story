@@ -1,7 +1,7 @@
 {
   "file": "public/models/norka-r35-desktop.glb",
   "version": 2,
-  "byteLength": 10870432,
+  "byteLength": 17414688,
   "asset": {
     "generator": "glTF-Transform v4.4.1",
     "version": "2.0",
@@ -22,8 +22,8 @@
     "nodes": 436,
     "meshes": 195,
     "materials": 64,
-    "textures": 70,
-    "images": 70,
+    "textures": 71,
+    "images": 71,
     "animations": 0,
     "cameras": 0
   },

@@ -40,13 +40,13 @@ export const desktopWaypoints: CameraWaypointSet = {
   performance: [4.15, 2.75, 2.05],
   'rear-signature': [-7.2, 2.1, 0.2],
   precision: [-6.5, 1.9, 2.8],
-  interior: [-0.24, 1.55, -2.2],
+  interior: [-0.24, 1.4, -2.6],
   steering: [-0.05, 1.05, -0.45],
   instruments: [0.28, 1.1, -0.2],
   'front-seats': [-0.3, 0.94, 0.08],
   'rear-seats': [0, 1.02, -0.05],
   'rear-seat-detail': [0, 1.04, -0.36],
-  explore: [0, 1.18, 0.8],
+  explore: [-0.24, 1.4, -2.6],
 };
 
 export const mobileWaypoints: CameraWaypointSet = {
@@ -54,13 +54,13 @@ export const mobileWaypoints: CameraWaypointSet = {
   performance: [5.45, 3.2, 3],
   'rear-signature': [-10, 3, 0],
   precision: [-9.5, 2.3, 3.8],
-  interior: [-0.18, 1.55, -2.2],
+  interior: [-0.18, 1.45, -2.6],
   steering: [-0.05, 1.05, -0.45],
   instruments: [0.28, 1.09, -0.22],
   'front-seats': [-0.3, 0.94, 0.08],
   'rear-seats': [0, 1, -0.04],
   'rear-seat-detail': [0, 1.08, -0.36],
-  explore: [0, 1.18, 0.8],
+  explore: [-0.18, 1.45, -2.6],
 };
 
 export function usesCompactCamera(width: number, height: number): boolean {

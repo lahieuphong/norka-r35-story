@@ -6,7 +6,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { useScrollStory, type CameraRigValues } from '../hooks/useScrollStory';
 import { getShotSet, getWaypointSet } from './cameraShots';
 import type { ExplorePhase } from './experienceTypes';
-import { cameraDebugSnapshot } from './storyState';
+import { cameraDebugSnapshot, storyVisualState } from './storyState';
 
 interface Props {
   readonly controlsRef: RefObject<OrbitControlsImpl | null>;
@@ -35,6 +35,7 @@ export function CameraRig({ controlsRef, compact, modelReady, phase, reducedMoti
   useEffect(() => {
     activeTween.current?.kill();
     activeTween.current = null;
+    if (phase !== 'story') storyVisualState.glassOpacity = 1;
     if (phase === 'entering') {
       const shot = shots.explore;
       const duration = reducedMotion ? 0.01 : 1.05;

@@ -60,7 +60,8 @@ Debug HUD phát triển vẫn được bật/tắt bằng phím **D** và nút *
 - Thêm cảnh số `04` sau Performance: desktop dùng `position [-4.10, 1.60, -6.00]`, `target [-1.45, 0.52, -1.70]`, `fov 33`; compact dùng `position [-8.30, 2.40, -10.80]`, `target [-0.50, 0.25, -1.35]`, `fov 52`.
 - Khung hình mới bao quát bốn đèn hậu tròn, cánh gió, bánh sau, bốn đầu pô và diffuser; copy nằm tách khỏi thân xe ở cả desktop lẫn portrait.
 - Quỹ đạo Performance → Rear Signature đi qua waypoint desktop `[-7.20, 2.10, 0.20]` / compact `[-10.00, 3.00, 0.00]`. Quỹ đạo Rear Signature → Precision tiếp tục vòng ngoài sườn trái qua `[-6.50, 1.90, 2.80]` / `[-9.50, 2.30, 3.80]`, tránh cắt xuyên thân xe.
-- Waypoint vào Cockpit được đổi thành `[-0.24, 1.55, -2.20]` trên desktop và `[-0.18, 1.55, -2.20]` trên compact. Camera đi từ cửa kính sau, qua khe giữa hai ghế trước rồi dừng ở shot Cockpit; không còn đi xuyên trụ, dashboard hoặc lưng ghế tại đoạn copy xuất hiện.
+- Waypoint vào Cockpit được tinh chỉnh thành `[-0.24, 1.40, -2.60]` trên desktop và `[-0.18, 1.45, -2.60]` trên compact. Camera đi từ cửa kính sau, qua khe giữa hai ghế trước rồi dừng ở shot Cockpit. Vì GLB là một vỏ xe kín, hai material kính được fade có kiểm soát đúng trong khoảng camera băng qua kính; quỹ đạo đã được đo để không xuyên trụ, dashboard, gương hoặc lưng ghế.
+- Đoạn Rear Seat Detail → Explore đi qua shot Interior, waypoint ngoài kính sau nói trên, rồi mới trở lại góc ngoại thất. Cùng một timeline và fade kính được đánh giá ngược khi cuộn lên, nên cả hai chiều đều giữ quỹ đạo an toàn.
 - Audit coverage xác nhận center console đã hiện trong Cockpit, Digital Cluster và Front Seats nên không cần thêm section trùng nội dung. Khoang máy không thể lộ chỉ bằng camera vì mesh capo của GLB đang đóng và model không có animation mở nắp; đây là giới hạn trạng thái model, không phải góc camera bị bỏ sót.
 
 ## Kiểm tra chuyển động

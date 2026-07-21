@@ -93,7 +93,7 @@ const MATERIAL_PROFILES = {
   hood_undertext: { metalness: 1, roughness: 1, specularIntensity: 1 },
 } as const satisfies Readonly<Record<string, MaterialProfile>>;
 
-const SHADOWLESS_GLASS = new Set(['ext_glass', 'INT_Glass_DISPLAY', 'INT_Display_Glass']);
+const SHADOWLESS_GLASS = new Set(['black_glass', 'ext_glass', 'INT_Glass_DISPLAY', 'INT_Display_Glass']);
 const EMISSIVE_DISABLED = new Set(['INT_Decals_EMISSIVE', 'INT_Decals_EMISSIVE_Ref', 'INT_Decals_Display']);
 
 function cloneNormalMap(source: THREE.Texture, channel: number, repeat: number): THREE.Texture {
@@ -160,7 +160,16 @@ function applyProfile(
   }
 }
 
-export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMaterialMaps): void {
+function applyTextureSampling(material: THREE.Material, anisotropy: number): void {
+  if (anisotropy <= 1) return;
+  Object.values(material).forEach((value) => {
+    if (!(value instanceof THREE.Texture) || value.anisotropy >= anisotropy) return;
+    value.anisotropy = anisotropy;
+    value.needsUpdate = true;
+  });
+}
+
+export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMaterialMaps, anisotropy = 1): void {
   const visited = new Set<THREE.Material>();
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -192,6 +201,7 @@ export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMa
         material.emissiveIntensity = 0;
       }
 
+      applyTextureSampling(material, anisotropy);
       material.needsUpdate = true;
     });
   });

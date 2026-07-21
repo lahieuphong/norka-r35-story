@@ -28,7 +28,9 @@ function readProfile(): Profile {
   const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
   const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
   const lowEnd = isMobile && (lowMemory || lowCpu);
-  const cap = lowEnd ? 0.9 : isMobile ? 1 : 1.5;
+  // Keep enough physical pixels for fine bodywork and cockpit decals on
+  // high-density displays. Low-end phones still use a conservative ceiling.
+  const cap = lowEnd ? 1.25 : isMobile ? 1.5 : 2;
   return { isMobile, compact, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
 }
 function useProfile(): Profile {
@@ -121,7 +123,7 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
           dpr={profile.dpr}
           shadows={!profile.lowEnd}
           camera={{ position: [...shot.position], fov: shot.fov, near: 0.05, far: 100 }}
-          gl={{ antialias: !profile.lowEnd, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }}
+          gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }}
           onCreated={({ gl }) => {
             gl.outputColorSpace = THREE.SRGBColorSpace;
             gl.toneMapping = THREE.ACESFilmicToneMapping;

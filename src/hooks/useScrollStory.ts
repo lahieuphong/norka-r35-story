@@ -3,7 +3,7 @@ import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import * as THREE from 'three';
 import { STORY_SHOT_ORDER, type CameraShotSet, type CameraWaypointSet, type ShotName } from '../three/cameraShots';
-import { cameraDebugSnapshot, disableStoryScrollTriggers, isStoryScrollSuspended, STORY_TRIGGER_PREFIX } from '../three/storyState';
+import { cameraDebugSnapshot, disableStoryScrollTriggers, isStoryScrollSuspended, STORY_TRIGGER_PREFIX, storyVisualState } from '../three/storyState';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -33,6 +33,7 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
     const orderMatches = sections.every((section, index) => section.dataset.storySection === STORY_SHOT_ORDER[index]);
     if (sections.length !== STORY_SHOT_ORDER.length || copies.length !== STORY_SHOT_ORDER.length || !orderMatches) return;
     copyShot(rig, shots, 'hero');
+    storyVisualState.glassOpacity = 1;
     setProgress(0);
 
     const context = gsap.context(() => {
@@ -88,8 +89,25 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
         const shot = shots[name];
         const waypoint = waypoints[name];
         const start = index - 1;
-        timeline.to(rig.position, { x: waypoint[0], y: waypoint[1], z: waypoint[2], duration: 0.46 }, start);
-        timeline.to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2], duration: 0.54 }, start + 0.46);
+        if (name === 'explore') {
+          // Leave the rear seats through the same clear cabin line used on
+          // entry, cross the rear glass, then orbit back to the exterior.
+          const alignment = shots.interior.position;
+          timeline.to(rig.position, { x: alignment[0], y: alignment[1], z: alignment[2], duration: 0.25 }, start);
+          timeline.to(rig.position, { x: waypoint[0], y: waypoint[1], z: waypoint[2], duration: 0.35 }, start + 0.25);
+          timeline.to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2], duration: 0.4 }, start + 0.6);
+          timeline.to(storyVisualState, { glassOpacity: 0, duration: 0.1 }, start + 0.2);
+          timeline.to(storyVisualState, { glassOpacity: 1, duration: 0.16 }, start + 0.58);
+        } else {
+          timeline.to(rig.position, { x: waypoint[0], y: waypoint[1], z: waypoint[2], duration: 0.46 }, start);
+          timeline.to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2], duration: 0.54 }, start + 0.46);
+          if (name === 'interior') {
+            // The model is a closed shell. Fade only the two window materials
+            // while the camera crosses the rear glass, then restore them.
+            timeline.to(storyVisualState, { glassOpacity: 0, duration: 0.08 }, start + 0.74);
+            timeline.to(storyVisualState, { glassOpacity: 1, duration: 0.1 }, start + 0.9);
+          }
+        }
         timeline.to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2], duration: 1 }, start);
         timeline.to(rig, { fov: shot.fov, duration: 1 }, start);
         timeline.to(outgoing, { autoAlpha: 0, yPercent: -6, duration: 0.3, ease: 'power2.in' }, start + 0.06);
@@ -101,6 +119,6 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints }: 
 
     let cancelled = false;
     void document.fonts.ready.then(() => requestAnimationFrame(() => { if (!cancelled) ScrollTrigger.refresh(); }));
-    return () => { cancelled = true; context.revert(); };
+    return () => { cancelled = true; storyVisualState.glassOpacity = 1; context.revert(); };
   }, [ready, reducedMotion, rig, shots, waypoints]);
 }

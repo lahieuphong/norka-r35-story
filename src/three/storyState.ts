@@ -3,6 +3,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import type { ShotName } from './cameraShots';
 export const STORY_TRIGGER_PREFIX = 'norka-story';
 let storyScrollSuspended = false;
+export const storyVisualState = { glassOpacity: 1 };
 export const cameraDebugSnapshot: {
   position: THREE.Vector3;
   target: THREE.Vector3;
