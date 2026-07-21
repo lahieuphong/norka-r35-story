@@ -8,7 +8,7 @@ import { CameraRig } from './CameraRig';
 import { CarModel, type ModelReadyDetails } from './CarModel';
 import type { ExplorePhase } from './experienceTypes';
 import { Lighting } from './Lighting';
-import { getShotSet, usesCompactCamera } from './cameraShots';
+import { getShotSet, usesCompactCamera, usesLandscapeCamera } from './cameraShots';
 
 interface Props {
   readonly modelReady: boolean;
@@ -19,19 +19,20 @@ interface Props {
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
 }
-interface Profile { readonly isMobile: boolean; readonly compact: boolean; readonly lowEnd: boolean; readonly dpr: number; }
+interface Profile { readonly isMobile: boolean; readonly compact: boolean; readonly landscape: boolean; readonly lowEnd: boolean; readonly dpr: number; }
 function readProfile(): Profile {
   const touchPhoneLandscape = Math.min(window.innerWidth, window.innerHeight) <= 600
     && (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0);
   const isMobile = window.matchMedia('(max-width: 767px)').matches || touchPhoneLandscape;
   const compact = usesCompactCamera(window.innerWidth, window.innerHeight);
+  const landscape = usesLandscapeCamera(window.innerWidth, window.innerHeight);
   const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
   const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
   const lowEnd = isMobile && (lowMemory || lowCpu);
   // Keep enough physical pixels for fine bodywork and cockpit decals on
   // high-density displays. Low-end phones still use a conservative ceiling.
   const cap = lowEnd ? 1.25 : isMobile ? 1.5 : 2;
-  return { isMobile, compact, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
+  return { isMobile, compact, landscape, lowEnd, dpr: Math.min(window.devicePixelRatio || 1, cap) };
 }
 function useProfile(): Profile {
   const [profile, setProfile] = useState(readProfile);
@@ -93,7 +94,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
 export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete }: Props) {
   const profile = useProfile();
   const controlsRef = useRef<OrbitControlsImpl>(null);
-  const shot = useMemo(() => getShotSet(profile.compact).hero, [profile.compact]);
+  const shot = useMemo(() => getShotSet(profile.compact, profile.landscape).hero, [profile.compact, profile.landscape]);
   const interactive = phase === 'explore';
   useEffect(() => {
     if (!interactive) return;
@@ -128,15 +129,15 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
             gl.outputColorSpace = THREE.SRGBColorSpace;
             gl.toneMapping = THREE.ACESFilmicToneMapping;
             gl.toneMappingExposure = 0.92;
-            gl.setClearColor('#08090b', 1);
+            gl.setClearColor('#e8edf2', 1);
             gl.shadowMap.enabled = !profile.lowEnd;
             gl.shadowMap.type = THREE.PCFShadowMap;
           }}
         >
-          <color attach="background" args={['#08090b']} />
+          <color attach="background" args={['#e8edf2']} />
           <VisibilityController />
           <StaticShadowMap enabled={modelReady && !profile.lowEnd} isMobile={profile.isMobile} />
-          <CameraRig controlsRef={controlsRef} compact={profile.compact} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
+          <CameraRig controlsRef={controlsRef} compact={profile.compact} landscape={profile.landscape} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
           <Suspense fallback={null}>
             <Lighting isMobile={profile.isMobile} />
             <CarModel onReady={onModelReady} />

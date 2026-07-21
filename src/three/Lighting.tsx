@@ -7,17 +7,17 @@ export function Lighting({ isMobile }: Props) {
   const scene = useThree((state) => state.scene);
   useEffect(() => {
     const previous = scene.environmentIntensity;
-    scene.environmentIntensity = 0.78;
+    scene.environmentIntensity = 0.74;
     return () => { scene.environmentIntensity = previous; };
   }, [scene]);
   return (
     <>
       <Environment files="/hdr/automotive-studio.hdr" background={false} />
-      <ambientLight intensity={0.16} />
+      <ambientLight intensity={0.32} />
       <directionalLight
         castShadow
         color="#ffffff"
-        intensity={1.65}
+        intensity={1.5}
         position={[-4.5, 6.5, 5.5]}
         shadow-mapSize-width={isMobile ? 1024 : 2048}
         shadow-mapSize-height={isMobile ? 1024 : 2048}
@@ -29,14 +29,14 @@ export function Lighting({ isMobile }: Props) {
         shadow-camera-bottom={-5}
         shadow-bias={-0.00015}
       />
-      <directionalLight color="#ffffff" intensity={0.72} position={[5.5, 3.2, -4.5]} />
-      <spotLight color="#ffffff" intensity={3.7} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
-      <rectAreaLight color="#ffffff" intensity={2.45} width={5.5} height={1.2} position={[0, 5.5, 1]} rotation={[-Math.PI / 2, 0, 0]} />
+      <directionalLight color="#ffffff" intensity={0.82} position={[5.5, 3.2, -4.5]} />
+      <spotLight color="#ffffff" intensity={2.8} distance={13} angle={0.52} penumbra={0.9} position={[-4.5, 2.1, -4.8]} />
+      <rectAreaLight color="#ffffff" intensity={2.15} width={5.5} height={1.2} position={[0, 5.5, 1]} rotation={[-Math.PI / 2, 0, 0]} />
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}>
-        <planeGeometry args={[30, 30]} />
-        <meshStandardMaterial color="#07080a" roughness={0.93} metalness={0.02} />
+        <planeGeometry args={[80, 80]} />
+        <meshStandardMaterial color="#cfd7de" roughness={0.94} metalness={0.01} />
       </mesh>
-      <ContactShadows position={[0, 0.012, 0]} scale={9} opacity={0.52} blur={isMobile ? 2.7 : 3.1} far={3.8} resolution={isMobile ? 512 : 1024} frames={1} />
+      <ContactShadows color="#263746" position={[0, 0.012, 0]} scale={9} opacity={0.34} blur={isMobile ? 2.7 : 3.1} far={3.8} resolution={isMobile ? 512 : 1024} frames={1} />
     </>
   );
 }

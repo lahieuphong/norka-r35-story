@@ -6,7 +6,7 @@ export function Header({ exploreActive }: Props) {
         <img className="wordmark__logo" src="/brand/norka-compass-logo-512.png" width="44" height="44" alt="" aria-hidden="true" />
         <span className="wordmark__text"><span>NORKA</span><strong>R35</strong></span>
       </a>
-      <nav aria-label="Story sections"><a href="#aerodynamics">Design</a><a href="#performance">Power</a><a href="#interior">Interior</a><a href="#explore">Explore</a></nav>
+      <nav aria-label="Story sections"><a href="#performance">Power</a><a href="#aerodynamics">Design</a><a href="#interior">Interior</a><a href="#explore">Explore</a></nav>
       <span className="header-index" aria-hidden="true">01—12</span>
     </header>
   );

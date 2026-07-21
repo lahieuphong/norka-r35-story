@@ -52,7 +52,7 @@ For `prefers-reduced-motion`, the camera switches between static desktop/compact
 
 ## Refined camera compositions
 
-The camera shots were visually re-tuned without modifying the model, normalization, model scale, CSS transforms, or timeline architecture. A later coverage pass adds a dedicated Rear Signature section, widens the Digital Cluster view to include the center display, and routes the exterior-to-cockpit move through the rear cabin instead of through seat geometry. The responsive review viewports were:
+The camera shots were visually re-tuned without modifying the model, normalization, model scale, CSS transforms, or timeline architecture. The exterior sequence now follows one direction through Hero → Performance → Aerodynamics → a straight-on Rear Signature → rear-left Precision, then enters the existing detailed cabin sequence. A later coverage pass also widens the Digital Cluster view to include the center display and routes the exterior-to-cockpit move through the rear cabin instead of through seat geometry. The responsive review viewports were:
 
 - Desktop: `1440 × 900`
 - Tablet landscape: `1024 × 768`
@@ -61,7 +61,7 @@ The camera shots were visually re-tuned without modifying the model, normalizati
 - Small mobile: `320 × 568`
 - Mobile landscape: `667 × 375` and `844 × 390`
 
-Desktop and landscape views use `desktopShots`; phones and tablets in portrait up to 1024px use `mobileShots` as the compact composition. Short landscape screens receive a dedicated low-height layout, while touch phones retain mobile DPR/shadow limits after rotation. A portrait tablet keeps the desktop render quality and zoom limits while using safer portrait framing. The before/after coordinates, measured framing notes, and constraints check are recorded in [`CAMERA_TUNING_REPORT.md`](./CAMERA_TUNING_REPORT.md).
+Desktop views use `desktopShots`; phones and tablets in portrait up to 1024px use `mobileShots` as the compact composition. Short landscape screens use `landscapeShots`, which inherits the desktop set and overrides the direct-rear and rear-left-detail compositions so the car remains prominent beside the copy. Touch phones retain mobile DPR/shadow limits after rotation. A portrait tablet keeps the desktop render quality and zoom limits while using safer portrait framing. The before/after coordinates, measured framing notes, and constraints check are recorded in [`CAMERA_TUNING_REPORT.md`](./CAMERA_TUNING_REPORT.md).
 
 ## Explore mode
 
@@ -82,7 +82,7 @@ VITE_SCROLL_MARKERS=true yarn dev
 1. Run `yarn dev` and wait for the real GLB to reach 100%.
 2. Press **D** to show the camera HUD.
 3. Scroll to a section and inspect the actual composition.
-4. Adjust only the matching entry inside `desktopShots` or `mobileShots` in `src/three/cameraShots.ts`.
+4. Adjust the matching entry inside `desktopShots` or `mobileShots`; use `landscapeShots` only for the short-landscape override in `src/three/cameraShots.ts`.
 5. Use **Copy shot** to capture position, target, and FOV.
 6. Test both down-scroll and up-scroll. Target must continue tweening for the full section transition; do not introduce independent camera tweens.
 7. Test portrait framing separately. Mobile shots are authored independently, not obtained by multiplying desktop coordinates.
@@ -131,7 +131,7 @@ python scripts/generate-studio-hdr.py
 - Camera framing and section layout were reviewed at `1440 × 900`, `1024 × 768`, `768 × 1024`, `390 × 844`, `320 × 568`, `667 × 375`, and `844 × 390` using the model's exact geometry and production copy.
 - All 12 final section compositions were re-captured at `1440 × 900` and `390 × 844`; the new rear shot and adjacent camera paths were additionally checked at `768 × 1024` and `844 × 390`.
 - Aerodynamics measured approximately `67.58%` of viewport width on desktop and `73.94%` on mobile, within the requested `65–75%` range.
-- Desktop and mobile shots were checked individually for full-car clearance, hood/front recognition, front wheel/brake emphasis, complete rear treatment, cabin coverage, and Explore starting distance.
+- Desktop and mobile shots were checked individually for full-car clearance, hood/front recognition, rear-left wheel/brake emphasis, complete direct-rear treatment, cabin coverage, and Explore starting distance.
 
 ## Performance and resilience
 

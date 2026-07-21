@@ -83,11 +83,11 @@ export function App() {
       <div className="visual-vignette" aria-hidden="true" />
       <Header exploreActive={exploreActive} />
       <main className="story-root" data-story-root inert={exploreActive}>
-        <StorySection id="hero" index="01" eyebrow="NORKA R35" heading="Engineered Beyond Limits" body="A sculpted performance machine built around speed, precision and uncompromising presence." ctaLabel="Discover the machine" ctaHref="#aerodynamics" />
-        <StorySection id="aerodynamics" index="02" eyebrow="Sculpted by airflow" heading="Aerodynamics" body="Every surface, vent and carbon detail is shaped to manage airflow and create a planted, purposeful silhouette." align="right" />
-        <StorySection id="performance" index="03" eyebrow="Power beneath the surface" heading="Performance" body="A focused powertrain, aggressive cooling and track-inspired engineering form the heart of the machine." />
+        <StorySection id="hero" index="01" eyebrow="NORKA R35" heading="Engineered Beyond Limits" body="A sculpted performance machine built around speed, precision and uncompromising presence." ctaLabel="Discover the machine" ctaHref="#performance" />
+        <StorySection id="performance" index="02" eyebrow="Performance in every line" heading="Performance" body="A wide stance, aggressive cooling and track-inspired engineering give the machine its unmistakable purpose." />
+        <StorySection id="aerodynamics" index="03" eyebrow="Sculpted by airflow" heading="Aerodynamics" body="Every surface, vent and carbon detail is shaped to manage airflow and create a planted, purposeful silhouette." align="right" />
         <StorySection id="rear-signature" index="04" eyebrow="Designed to leave a mark" heading="Rear Signature" body="Four circular tail lamps, a towering rear wing and a sculpted diffuser create an unmistakable departing view." align="right" />
-        <StorySection id="precision" index="05" eyebrow="Control at every corner" heading="Precision" body="Lightweight wheels, performance braking and a tuned suspension translate power into controlled motion." align="right" />
+        <StorySection id="precision" index="05" eyebrow="Control at every corner" heading="Precision" body="Lightweight wheels, performance braking and a tuned suspension translate power into controlled motion." />
         <StorySection id="interior" index="06" eyebrow="Built around the driver" heading="Cockpit" body="Step through the glass into a focused cabin of leather, carbon, instrumentation and driver-first controls." />
         <StorySection id="steering" index="07" eyebrow="Command in every touch" heading="Steering" body="A compact performance wheel places the essential controls and shift inputs directly beneath the driver's hands." />
         <StorySection id="instruments" index="08" eyebrow="Information at a glance" heading="Digital Cluster" body="Layered gauges and illuminated displays keep the car's vital information in the driver's natural line of sight." align="right" />
