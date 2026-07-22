@@ -10,10 +10,12 @@
     "typecheck": "tsc -b --pretty false",
     "inspect:model": "node scripts/inspect-model.mjs public/models/norka-r35-desktop.glb",
     "inspect:model:mobile": "node scripts/inspect-model.mjs public/models/norka-r35-mobile.glb",
+    "inspect:model:fallback": "node scripts/inspect-model.mjs public/models/norka-r35-fallback.glb",
     "inspect:model:original": "node scripts/inspect-model.mjs public/models/norka-r35-original.glb",
     "optimize:model": "node scripts/optimize-model.mjs --variant all",
     "optimize:model:desktop": "node scripts/optimize-model.mjs --variant desktop",
-    "optimize:model:mobile": "node scripts/optimize-model.mjs --variant mobile"
+    "optimize:model:mobile": "node scripts/optimize-model.mjs --variant mobile",
+    "optimize:model:fallback": "node scripts/optimize-model.mjs --variant fallback"
   },
   "dependencies": {
     "@react-three/drei": "10.7.7",

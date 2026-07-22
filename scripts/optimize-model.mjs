@@ -1,16 +1,15 @@
 /**
- * Builds self-contained desktop and mobile GLBs without simplifying, welding,
- * joining, or removing geometry. Surface vectors use visually lossless 16-bit
- * normalized attributes, and material textures use semantic-aware KTX2/Basis
- * compression with precomputed mipmaps. Desktop keeps the supplied 4096px hero
- * maps; mobile resizes only those oversized maps to 2048px.
+ * Builds self-contained desktop, mobile, and compatibility GLBs without
+ * simplifying, welding, joining, or removing geometry. Surface vectors use
+ * visually lossless 16-bit normalized attributes. Desktop/mobile use semantic
+ * KTX2/Basis compression; the compatibility tier uses standard 1024/512px PNG
+ * textures so GPUs without a compressed target never expand the 2048px asset.
  */
 import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTMeshoptCompression, KHRTextureBasisu } from '@gltf-transform/extensions';
-import { getTextureColorSpace, listTextureSlots, prune, quantize, reorder } from '@gltf-transform/functions';
-import { encodeToKTX2 } from 'ktx2-encoder';
+import { compressTexture, getTextureColorSpace, listTextureSlots, prune, quantize, reorder, textureCompress } from '@gltf-transform/functions';
 import { MeshoptEncoder } from 'meshoptimizer';
 import sharp from 'sharp';
 
@@ -28,10 +27,13 @@ await Promise.all([access(input), ...Object.values(referenceInputs).map((path) =
 
 const arg = process.argv.indexOf('--variant');
 const requested = arg >= 0 ? process.argv[arg + 1] : 'all';
-const variants = requested === 'all' ? ['desktop', 'mobile'] : [requested];
-if (!variants.every((value) => value === 'desktop' || value === 'mobile')) {
-  throw new Error('Variant must be desktop, mobile, or all.');
+const variants = requested === 'all' ? ['desktop', 'mobile', 'fallback'] : [requested];
+if (!variants.every((value) => value === 'desktop' || value === 'mobile' || value === 'fallback')) {
+  throw new Error('Variant must be desktop, mobile, fallback, or all.');
 }
+const encodeToKTX2 = variants.some((variant) => variant !== 'fallback')
+  ? (await import('ktx2-encoder')).encodeToKTX2
+  : null;
 
 const sourceImages = Object.fromEntries(await Promise.all(
   Object.entries(referenceInputs).map(async ([name, path]) => [name, new Uint8Array(await readFile(path))]),
@@ -40,14 +42,15 @@ await MeshoptEncoder.ready;
 
 async function prepareReferenceImages(variant) {
   const prepared = {};
+  const maxSize = variant === 'desktop' ? Number.POSITIVE_INFINITY : variant === 'mobile' ? 2048 : 1024;
   for (const [name, image] of Object.entries(sourceImages)) {
     const metadata = await sharp(image).metadata();
-    if (variant === 'desktop' || ((metadata.width ?? 0) <= 2048 && (metadata.height ?? 0) <= 2048)) {
+    if ((metadata.width ?? 0) <= maxSize && (metadata.height ?? 0) <= maxSize) {
       prepared[name] = image;
       continue;
     }
     prepared[name] = new Uint8Array(await sharp(image)
-      .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
+      .resize({ width: maxSize, height: maxSize, fit: 'inside', withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
       // Disabling adaptive PNG filters is lossless and compresses this tiled
       // carbon reference substantially better after Lanczos resampling.
       .png({ compressionLevel: 9, adaptiveFiltering: false })
@@ -82,6 +85,46 @@ async function prepareReferenceImages(variant) {
     .toBuffer());
 
   return prepared;
+}
+
+function stripRuntimeOverriddenTextures(document) {
+  const materials = new Map(document.getRoot().listMaterials().map((material) => [material.getName(), material]));
+
+  // These maps are always replaced by solid colors or the shared carbon
+  // normal at runtime. Removing them before prune avoids downloading and
+  // transcoding pixels that can never reach the shader.
+  materials.get('darkgrayplastic')?.setBaseColorTexture(null).setNormalTexture(null);
+  materials.get('region_plates')?.setBaseColorTexture(null).setNormalTexture(null);
+  materials.get('03_-_Default')?.setBaseColorTexture(null);
+
+  // Runtime intentionally disables these emissive maps as part of the
+  // recovered Sketchfab material profile.
+  for (const name of ['INT_Decals_EMISSIVE', 'INT_Decals_EMISSIVE_Ref', 'INT_Decals_Display']) {
+    materials.get(name)?.setEmissiveTexture(null);
+  }
+}
+
+async function prepareFallbackTextures(document) {
+  // Standard PNG is decoded natively on every WebGL2 browser and needs no
+  // Basis worker. Keep the supplied reference maps at 1024px for clarity;
+  // secondary maps are capped at 512px to bound RGBA CPU + GPU memory.
+  await document.transform(
+    textureCompress({
+      encoder: sharp,
+      targetFormat: 'png',
+      resize: [1024, 1024],
+      effort: 100,
+      pattern: /^norka-(paint|carbon|carbon-normal|glass)-reference/,
+    }),
+  );
+  await Promise.all(document.getRoot().listTextures()
+    .filter((texture) => !/^norka-(paint|carbon|carbon-normal|glass)-reference/.test(texture.getName()))
+    .map((texture) => compressTexture(texture, {
+      encoder: sharp,
+      targetFormat: 'png',
+      resize: [512, 512],
+      effort: 100,
+    })));
 }
 
 function embedReferenceMaterials(document, images) {
@@ -129,6 +172,7 @@ async function decodeNormalImage(image) {
 }
 
 async function compressMaterialTextures(document) {
+  if (!encodeToKTX2) throw new Error('KTX2 encoder was not initialized.');
   const textures = document.getRoot().listTextures();
   let compressed = 0;
   for (const [index, texture] of textures.entries()) {
@@ -173,6 +217,7 @@ for (const variant of variants) {
   const document = await io.read(input);
   const images = await prepareReferenceImages(variant);
   embedReferenceMaterials(document, images);
+  stripRuntimeOverriddenTextures(document);
 
   await document.transform(
     reorder({ encoder: MeshoptEncoder, target: 'size' }),
@@ -197,12 +242,16 @@ for (const variant of variants) {
       keepSolidTextures: false,
     }),
   );
-  await compressMaterialTextures(document);
+  if (variant === 'fallback') await prepareFallbackTextures(document);
+  else await compressMaterialTextures(document);
   document
     .createExtension(EXTMeshoptCompression)
     .setRequired(true)
     .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
 
   await io.write(output, document);
-  console.log(`Wrote ${output} with KTX2 textures, 16-bit surface vectors, and ${variant === 'mobile' ? '2048px' : '4096px'} hero maps.`);
+  const textureProfile = variant === 'fallback'
+    ? 'standard PNG textures (1024px references / 512px secondary)'
+    : `KTX2 textures and ${variant === 'mobile' ? '2048px' : '4096px'} hero maps`;
+  console.log(`Wrote ${output} with ${textureProfile} and 16-bit surface vectors.`);
 }

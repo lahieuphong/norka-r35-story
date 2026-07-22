@@ -1,15 +1,20 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { KTX2Loader, type GLTFLoader } from 'three-stdlib';
-import { shouldUseMobileModel } from './deviceProfile';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import type { GLTFLoader } from 'three-stdlib';
 import { applyMaterialAdjustments, type ReferenceMaterialMaps } from './materialAdjustments';
 import { computeModelNormalization, type ModelNormalization } from './modelNormalization';
 import { storyVisualState } from './storyState';
 
-const URLS = { original: '/models/norka-r35-original.glb', desktop: '/models/norka-r35-desktop.glb', mobile: '/models/norka-r35-mobile.glb' } as const;
+const URLS = {
+  original: '/models/norka-r35-original.glb',
+  desktop: '/models/norka-r35-desktop.glb',
+  mobile: '/models/norka-r35-mobile.glb',
+  fallback: '/models/norka-r35-fallback.glb',
+} as const;
 type ModelVariant = keyof typeof URLS;
 const COMPRESSED_TEXTURE_EXTENSIONS = [
   'WEBGL_compressed_texture_astc',
@@ -18,40 +23,57 @@ const COMPRESSED_TEXTURE_EXTENSIONS = [
   'WEBGL_compressed_texture_etc1',
   'WEBGL_compressed_texture_s3tc',
   'WEBGL_compressed_texture_pvrtc',
+  'WEBKIT_WEBGL_compressed_texture_pvrtc',
 ] as const;
 
 function supportsGpuCompressedTextures(renderer: THREE.WebGLRenderer): boolean {
   return COMPRESSED_TEXTURE_EXTENSIONS.some((extension) => renderer.extensions.has(extension));
 }
 
-function selectRuntimeVariant(renderer: THREE.WebGLRenderer): ModelVariant {
+function selectRuntimeVariant(renderer: THREE.WebGLRenderer, preferMobile: boolean): ModelVariant {
   const forced = import.meta.env.VITE_MODEL_VARIANT;
   // Overrides are comparison tools only. In production, capability checks must
   // always win so an accidental environment value cannot ship the 8K original.
-  if (import.meta.env.DEV && (forced === 'original' || forced === 'desktop' || forced === 'mobile')) return forced;
-  if (shouldUseMobileModel()) return 'mobile';
+  if (import.meta.env.DEV && (forced === 'original' || forced === 'desktop' || forced === 'mobile' || forced === 'fallback')) return forced;
+  // On GPUs without any compressed target, a smaller PNG GLB has a much lower
+  // unified-memory peak and does not start the transcoder at all.
+  if (!supportsGpuCompressedTextures(renderer)) return 'fallback';
+  if (preferMobile) return 'mobile';
   if (renderer.capabilities.maxTextureSize < 4096) return 'mobile';
-  return supportsGpuCompressedTextures(renderer) ? 'desktop' : 'mobile';
+  return 'desktop';
 }
 export interface ModelAttribution { readonly title: string; readonly author: string; readonly license: string; }
 export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-norka_varis_r35', author: 'MattDoesBlender', license: 'CC BY-NC-SA 4.0' };
 export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
 interface Props {
   readonly anisotropy: number;
+  readonly preferMobile: boolean;
   readonly onReady: (details: ModelReadyDetails) => void;
 }
 
 const KTX2_LOADERS = new WeakMap<THREE.WebGLRenderer, KTX2Loader>();
+const GLTF_CLEAR_TIMERS = new Map<string, number>();
+const RESOURCE_DISPOSAL_TIMERS = new WeakMap<object, number>();
 function configureKTX2Loader(loader: GLTFLoader, renderer: THREE.WebGLRenderer): void {
   let ktx2Loader = KTX2_LOADERS.get(renderer);
   if (!ktx2Loader) {
     ktx2Loader = new KTX2Loader()
-      .setTranscoderPath('/basis/')
-      .setWorkerLimit(2)
+      // One worker avoids a second 16-24 MiB WASM heap. The model is loaded
+      // once, so the small transcode-time tradeoff is preferable on phones.
+      .setWorkerLimit(1)
       .detectSupport(renderer);
     KTX2_LOADERS.set(renderer, ktx2Loader);
   }
-  loader.setKTX2Loader(ktx2Loader);
+  // Drei currently exposes GLTFLoader through three-stdlib's older declaration,
+  // while the runtime loader is Three's current implementation.
+  (loader as unknown as { setKTX2Loader(value: KTX2Loader): void }).setKTX2Loader(ktx2Loader);
+}
+
+export function releaseKTX2Loader(renderer: THREE.WebGLRenderer): void {
+  const loader = KTX2_LOADERS.get(renderer);
+  if (!loader) return;
+  loader.dispose();
+  KTX2_LOADERS.delete(renderer);
 }
 
 function cleanMetadataValue(value: unknown, fallback: string): string {
@@ -125,12 +147,16 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ anisotropy, onReady }: Props) {
+export function CarModel({ anisotropy, preferMobile, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
-  const modelVariant = useMemo(() => selectRuntimeVariant(renderer), [renderer]);
-  const gltf = useGLTF(URLS[modelVariant], false, true, (loader) => configureKTX2Loader(loader, renderer));
+  const modelVariant = useMemo(() => selectRuntimeVariant(renderer, preferMobile), [preferMobile, renderer]);
+  const modelUrl = URLS[modelVariant];
+  const extendLoader = useCallback((loader: GLTFLoader) => {
+    if (modelVariant === 'desktop' || modelVariant === 'mobile') configureKTX2Loader(loader, renderer);
+  }, [modelVariant, renderer]);
+  const gltf = useGLTF(modelUrl, false, true, extendLoader);
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-  const reported = useRef(false);
+  const reportedSelection = useRef<string | null>(null);
   const renderedGlassOpacity = useRef(Number.NaN);
   const prepared = useMemo(() => {
     const scene = clone(gltf.scene) as THREE.Group;
@@ -142,12 +168,14 @@ export function CarModel({ anisotropy, onReady }: Props) {
     applyMaterialAdjustments(scene, referenceMaps, Math.min(anisotropy, maxAnisotropy));
     let nodeCount = 0;
     let meshCount = 0;
+    const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     const glassMaterials: Array<{ readonly material: THREE.MeshStandardMaterial; readonly baseOpacity: number }> = [];
     scene.traverse((object) => {
       nodeCount += 1;
       if (!(object instanceof THREE.Mesh)) return;
       meshCount += 1;
+      geometries.add(object.geometry);
       (Array.isArray(object.material) ? object.material : [object.material]).forEach((material) => {
         if (materials.has(material)) return;
         materials.add(material);
@@ -167,15 +195,57 @@ export function CarModel({ anisotropy, onReady }: Props) {
       materialCount: materials.size,
       attribution,
       glassMaterials,
+      ownedGeometries: [...geometries],
       ownedMaterials: [...materials],
       ownedTextures: [...textures],
     };
   }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy]);
+  useLayoutEffect(() => {
+    // useGLTF resolves only after every embedded texture has finished loading,
+    // so the transcoder pool is no longer needed here.
+    releaseKTX2Loader(renderer);
+  }, [gltf, renderer]);
+  useEffect(() => {
+    const root = document.documentElement;
+    const pendingClear = GLTF_CLEAR_TIMERS.get(modelUrl);
+    if (pendingClear !== undefined) {
+      window.clearTimeout(pendingClear);
+      GLTF_CLEAR_TIMERS.delete(modelUrl);
+    }
+    root.dataset.modelVariant = modelVariant;
+    root.dataset.textureCompression = modelVariant === 'desktop' || modelVariant === 'mobile'
+      ? 'gpu-compressed'
+      : modelVariant === 'fallback' ? 'png-fallback' : 'png-original';
+    return () => {
+      if (root.dataset.modelVariant === modelVariant) {
+        delete root.dataset.modelVariant;
+        delete root.dataset.textureCompression;
+      }
+      // Defer cache eviction by one task. React StrictMode immediately sets
+      // the same effect up again and cancels this timer, while a real variant
+      // change releases the previous GLB's CPU buffers after GPU cleanup.
+      const timer = window.setTimeout(() => {
+        useGLTF.clear(modelUrl);
+        GLTF_CLEAR_TIMERS.delete(modelUrl);
+      }, 0);
+      GLTF_CLEAR_TIMERS.set(modelUrl, timer);
+    };
+  }, [modelUrl, modelVariant]);
   useEffect(() => {
     renderedGlassOpacity.current = Number.NaN;
+    const pendingDisposal = RESOURCE_DISPOSAL_TIMERS.get(prepared);
+    if (pendingDisposal !== undefined) {
+      window.clearTimeout(pendingDisposal);
+      RESOURCE_DISPOSAL_TIMERS.delete(prepared);
+    }
     return () => {
-      prepared.ownedMaterials.forEach((material) => material.dispose());
-      prepared.ownedTextures.forEach((texture) => texture.dispose());
+      const timer = window.setTimeout(() => {
+        prepared.ownedGeometries.forEach((geometry) => geometry.dispose());
+        prepared.ownedMaterials.forEach((material) => material.dispose());
+        prepared.ownedTextures.forEach((texture) => texture.dispose());
+        RESOURCE_DISPOSAL_TIMERS.delete(prepared);
+      }, 0);
+      RESOURCE_DISPOSAL_TIMERS.set(prepared, timer);
     };
   }, [prepared]);
   useFrame(() => {
@@ -187,9 +257,10 @@ export function CarModel({ anisotropy, onReady }: Props) {
     });
   });
   useLayoutEffect(() => {
-    if (reported.current) return;
-    reported.current = true;
+    const selection = modelVariant + ':' + String(preferMobile);
+    if (reportedSelection.current === selection) return;
+    reportedSelection.current = selection;
     onReady({ normalization: prepared.normalization, nodeCount: prepared.nodeCount, meshCount: prepared.meshCount, materialCount: prepared.materialCount, attribution: prepared.attribution });
-  }, [onReady, prepared]);
+  }, [modelVariant, onReady, preferMobile, prepared]);
   return <group position={prepared.normalization.offset}><primitive object={prepared.scene} dispose={null} /></group>;
 }

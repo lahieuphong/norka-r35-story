@@ -16,9 +16,29 @@ const report = inspect(document);
 const textures = report.textures.properties;
 const fileStats = await stat(file);
 const sum = (values) => values.reduce((total, value) => total + value, 0);
+const toMiB = (bytes) => Number((bytes / 1024 / 1024).toFixed(2));
 const textureGPUBytes = sum(textures.map((texture) => texture.gpuSize ?? 0));
 const textureSourceBytes = sum(textures.map((texture) => texture.size));
 const geometryGPUBytes = sum(root.listAccessors().map((accessor) => accessor.getArray()?.byteLength ?? 0));
+const rgba32MipBytes = (width, height) => {
+  let total = 0;
+  while (true) {
+    total += width * height * 4;
+    if (width === 1 && height === 1) return total;
+    width = Math.max(1, Math.floor(width / 2));
+    height = Math.max(1, Math.floor(height / 2));
+  }
+};
+const rgba32FallbackTextureBytes = sum(root.listTextures().map((texture, index) => {
+  if (texture.getMimeType() !== 'image/ktx2') return textures[index]?.gpuSize ?? 0;
+  const size = texture.getSize();
+  return size ? rgba32MipBytes(size[0], size[1]) : 0;
+}));
+const decodedStandardImageBytes = sum(root.listTextures().map((texture) => {
+  if (texture.getMimeType() === 'image/ktx2') return 0;
+  const size = texture.getSize();
+  return size ? size[0] * size[1] * 4 : 0;
+}));
 const textureTexels = sum(root.listTextures().map((texture) => {
   const size = texture.getSize();
   return size ? size[0] * size[1] : 0;
@@ -44,10 +64,21 @@ console.log(JSON.stringify({
     animations: root.listAnimations().length,
   },
   gpuEstimate: {
-    textureBytes: textureGPUBytes,
+    nominalTextureBytes: textureGPUBytes,
+    nominalTextureMiB: toMiB(textureGPUBytes),
+    rgba32KtxWorstCaseTextureBytes: rgba32FallbackTextureBytes,
+    rgba32KtxWorstCaseTextureMiB: toMiB(rgba32FallbackTextureBytes),
     geometryBytes: geometryGPUBytes,
-    combinedBytes: textureGPUBytes + geometryGPUBytes,
-    note: 'Model payload only; excludes framebuffer, HDR environment, contact shadow and renderer overhead.',
+    geometryMiB: toMiB(geometryGPUBytes),
+    nominalCombinedBytes: textureGPUBytes + geometryGPUBytes,
+    nominalCombinedMiB: toMiB(textureGPUBytes + geometryGPUBytes),
+    rgba32KtxWorstCaseCombinedBytes: rgba32FallbackTextureBytes + geometryGPUBytes,
+    rgba32KtxWorstCaseCombinedMiB: toMiB(rgba32FallbackTextureBytes + geometryGPUBytes),
+    decodedStandardImageCpuBytes: decodedStandardImageBytes,
+    decodedStandardImageCpuMiB: toMiB(decodedStandardImageBytes),
+    units: 'bytes',
+    notMeasuredRuntime: true,
+    note: 'Model-only estimates. Nominal KTX2 bytes vary by ASTC/ETC/BC target; RGBA32 is the no-compression KTX worst case. Excludes retained KTX mip copies, workers, GLB cache, framebuffer, HDR, PMREM, shadows, compositor and driver overhead.',
   },
   texturePayload: {
     sourceBytes: textureSourceBytes,
