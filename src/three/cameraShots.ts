@@ -22,7 +22,7 @@ export const desktopShots: CameraShotSet = {
 };
 
 export const mobileShots: CameraShotSet = {
-  hero: { position: [-7.3, 2.15, 8.95], target: [-0.3, 0.15, 0.5], fov: 53 },
+  hero: { position: [-7.3, 2.15, 8.95], target: [-0.3, 2.4, 0.5], fov: 53 },
   performance: { position: [4.15, 7.1, 9.35], target: [0.15, 0.12, 0.85], fov: 53 },
   aerodynamics: { position: [16.5, 1.9, 0.55], target: [0, 0.38, 0.05], fov: 50 },
   'rear-signature': { position: [0, 0.72, -8.15], target: [0, 0.15, -2.15], fov: 52 },

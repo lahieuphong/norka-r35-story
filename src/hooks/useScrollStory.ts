@@ -11,6 +11,7 @@ gsap.registerPlugin(ScrollTrigger);
 const COPY_FADE_DURATION = 0.4;
 const COPY_FADE_OUT_START = 0.22;
 const COPY_FADE_IN_START = 0.38;
+const FINAL_CAMERA_SETTLE = 0.48;
 
 export interface CameraRigValues { readonly position: THREE.Vector3; readonly target: THREE.Vector3; fov: number; }
 interface Options {
@@ -31,13 +32,19 @@ function copyShot(rig: CameraRigValues, shots: CameraShotSet, name: ShotName): v
   cameraDebugSnapshot.section = name;
 }
 
-function tweenPositionOnCurve(timeline: gsap.core.Timeline, rig: CameraRigValues, curve: PositionCurve, start: number): void {
-  const motion = { progress: 0 };
+function tweenPositionOnCurve(timeline: gsap.core.Timeline, rig: CameraRigValues, curve: PositionCurve, start: number, duration = 1): void {
+  let curveProgress = 0;
+  const motion = {
+    get progress(): number { return curveProgress; },
+    set progress(value: number) {
+      curveProgress = value;
+      curve.getPoint(value, rig.position);
+    },
+  };
   timeline.to(motion, {
     progress: 1,
-    duration: 1,
+    duration,
     ease: 'none',
-    onUpdate: () => { curve.getPoint(motion.progress, rig.position); },
   }, start);
 }
 
@@ -130,6 +137,11 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, on
         const shot = shots[name];
         const waypoint = waypoints[name];
         const start = index - 1;
+        let cameraSettleDuration = 1;
+        let outgoingFadeStart = COPY_FADE_OUT_START;
+        let incomingFadeStart = COPY_FADE_IN_START;
+        let outgoingFadeDuration = COPY_FADE_DURATION;
+        let incomingFadeDuration = COPY_FADE_DURATION;
 
         if (previousName === 'explore' && name === 'performance') {
           // The reordered opening uses one continuous curve so its new
@@ -141,7 +153,14 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, on
           ), start);
         } else if (previousName === 'rear-seat-detail' && name === 'hero') {
           // Leave the second row through the rear glass, sweep around the
-          // outside of the car, and settle into the final hero composition.
+          // outside of the car, and settle before the final section becomes
+          // active. Keeping this motion to the first half of the handoff
+          // prevents step 12 from being composited over close-up bodywork.
+          cameraSettleDuration = FINAL_CAMERA_SETTLE;
+          outgoingFadeStart = 0.2;
+          incomingFadeStart = 0.38;
+          outgoingFadeDuration = FINAL_CAMERA_SETTLE - outgoingFadeStart;
+          incomingFadeDuration = FINAL_CAMERA_SETTLE - incomingFadeStart;
           const alignment = shots.interior.position;
           const exteriorArc = new THREE.Vector3(
             shot.position[0] * 0.68,
@@ -160,9 +179,9 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, on
             rearClearance,
             exteriorArc,
             new THREE.Vector3(...shot.position),
-          ], false, 'centripetal'), start);
-          timeline.to(storyVisualState, { glassOpacity: 0, duration: 0.1 }, start + 0.18);
-          timeline.to(storyVisualState, { glassOpacity: 1, duration: 0.16 }, start + 0.42);
+          ], false, 'centripetal'), start, cameraSettleDuration);
+          timeline.to(storyVisualState, { glassOpacity: 0, duration: 0.05 }, start + 0.09);
+          timeline.to(storyVisualState, { glassOpacity: 1, duration: 0.08 }, start + 0.2);
         } else {
           timeline.to(rig.position, { x: waypoint[0], y: waypoint[1], z: waypoint[2], duration: 0.46 }, start);
           timeline.to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2], duration: 0.54 }, start + 0.46);
@@ -173,12 +192,28 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, on
             timeline.to(storyVisualState, { glassOpacity: 1, duration: 0.1 }, start + 0.9);
           }
         }
-        timeline.to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2], duration: 1 }, start);
-        timeline.to(rig, { fov: shot.fov, duration: 1 }, start);
+        timeline.to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2], duration: cameraSettleDuration }, start);
+        timeline.to(rig, { fov: shot.fov, duration: cameraSettleDuration }, start);
+        if (cameraSettleDuration < 1) {
+          // Keep an explicit direct-property plateau through the rest of this
+          // timeline unit. Besides preserving the 11-unit scroll mapping, this
+          // makes every GSAP refresh/seek write the exact final position without
+          // depending on the lifecycle of the curve-progress proxy.
+          const finalPosition = {
+            x: shot.position[0],
+            y: shot.position[1],
+            z: shot.position[2],
+          };
+          timeline.fromTo(rig.position, finalPosition, {
+            ...finalPosition,
+            duration: 1 - cameraSettleDuration,
+            immediateRender: false,
+          }, start + cameraSettleDuration);
+        }
         // Crossfade around the viewport handoff. The overlap guarantees that
         // at least one copy remains legible while scrolling in either direction.
-        timeline.to(outgoing, { autoAlpha: 0, yPercent: -6, duration: COPY_FADE_DURATION, ease: 'power2.in' }, start + COPY_FADE_OUT_START);
-        timeline.fromTo(incoming, { autoAlpha: 0, yPercent: 8 }, { autoAlpha: 1, yPercent: 0, duration: COPY_FADE_DURATION, ease: 'power2.out' }, start + COPY_FADE_IN_START);
+        timeline.to(outgoing, { autoAlpha: 0, yPercent: -6, duration: outgoingFadeDuration, ease: 'power2.in' }, start + outgoingFadeStart);
+        timeline.fromTo(incoming, { autoAlpha: 0, yPercent: 8 }, { autoAlpha: 1, yPercent: 0, duration: incomingFadeDuration, ease: 'power2.out' }, start + incomingFadeStart);
       }
     }, root);
 

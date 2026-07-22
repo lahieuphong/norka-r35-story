@@ -160,12 +160,12 @@
   .header-index { --wheel-size: 2.1rem; grid-column: 2; }
   .story-section { --story-copy-width: 100%; align-items: end; padding-top: 5.5rem; padding-bottom: 12svh; }
   .story-section__copy-viewport { top: 5.5rem; right: max(var(--page-pad),env(safe-area-inset-right)); bottom: 12svh; left: max(var(--page-pad),env(safe-area-inset-left)); justify-content: flex-end; width: auto; }
-  .story-section__copy,.story-section p { width: 100%; }
+  .story-section__copy,.story-section__copy > p { width: 100%; }
   .story-section--right .story-section__copy { text-align: left; }
   .story-section--right .story-section__meta { justify-content: flex-start; }
   .story-section--right h1,.story-section--right p { margin-left: 0; }
   .story-section h1 { max-width: min(11.5ch,100%); font-size: clamp(3.35rem,15vw,5.6rem); line-height: .94; }
-  .story-section p { max-width: 31rem; font-size: .94rem; }
+  .story-section__copy > p { max-width: 31rem; font-size: .94rem; }
   :is(#hero,#aerodynamics,#performance,#rear-signature,#precision,#explore) .story-section__copy::before { inset: -4rem -1.2rem -8rem; background: linear-gradient(0deg,rgba(232,237,242,.92) 0%,rgba(232,237,242,.55) 55%,rgba(232,237,242,0) 100%); }
   :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) .story-section__copy::before { inset: -7rem -1.2rem -8rem; background: linear-gradient(0deg,rgba(8,9,11,.92) 0%,rgba(8,9,11,.7) 50%,rgba(8,9,11,0) 100%); }
   :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(2.9rem,12vw,4.8rem); }
@@ -175,8 +175,10 @@
   #rear-seat-detail .story-section__copy::before { inset: -3rem -1.2rem -5rem; background: linear-gradient(180deg,rgba(8,9,11,.92) 0%,rgba(8,9,11,.68) 52%,rgba(8,9,11,0) 100%); }
   #hero { grid-template-rows: minmax(0,1fr) auto; align-items: stretch; gap: 1rem; padding-bottom: max(1rem,env(safe-area-inset-bottom)); }
   #hero .story-section__copy-slot { align-self: center; }
-  #hero .story-section__copy-viewport { justify-content: center; }
-  #hero .attribution { position: static; align-self: end; width: 100%; font-size: .6rem; }
+  #hero .story-section__copy-viewport { justify-content: flex-start; padding-top: clamp(2rem,7svh,3.75rem); }
+  #hero .story-section__copy::before { display: none; }
+  #hero .attribution { position: relative; z-index: 4; inset: auto; align-self: end; width: 100%; font-size: .6rem; }
+  #hero .attribution p { width: 100%; max-width: none; font-size: inherit; line-height: inherit; }
   .story-section__rail { display: none; }
   .attribution { bottom: 1rem; display: block; font-size: .6rem; }
   .attribution p + p { margin-top: .3rem; }
@@ -192,6 +194,11 @@
 @media (max-width: 767px) and (orientation: portrait) {
   .story-section { padding-bottom: clamp(5.5rem,16svh,7rem); }
   .story-section__copy-viewport { bottom: clamp(5.5rem,16svh,7rem); }
+  .site-header[data-story-index="11"]::before { height: 5.5rem; background: linear-gradient(180deg,rgba(8,9,11,.94),rgba(8,9,11,.9)); }
+  .site-header[data-story-index="11"] .wordmark { color: rgba(239,245,250,.96); }
+  .site-header[data-story-index="11"] .wordmark strong { color: #68bfff; }
+  #rear-seat-detail .story-section__copy::before { top: calc(-5.5rem - env(safe-area-inset-top)); }
+  #hero .attribution { font-size: clamp(.58rem,2.45vw,.64rem); line-height: 1.5; }
   .story-section h1 { max-width: min(11.5ch,100%); font-size: clamp(2.6rem,11vw,3.65rem); line-height: .96; letter-spacing: -.055em; }
   :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) h1 { font-size: clamp(2.35rem,9.5vw,3.25rem); line-height: .96; }
   .story-section__meta { gap: .65rem; margin-bottom: clamp(.7rem,2.5svh,1rem); font-size: clamp(.6rem,2.5vw,.66rem); }
@@ -220,6 +227,7 @@
   .story-section__meta { margin-bottom: .65rem; }
   .story-section__copy > p { margin-top: .85rem; font-size: .82rem; }
   .story-cta { margin-top: 1rem; }
+  #hero .story-section__copy-viewport { padding-top: .75rem; }
 }
 @media (max-height: 650px) and (orientation: landscape) {
   :root { --page-pad: clamp(1.2rem,4vw,2.1rem); }

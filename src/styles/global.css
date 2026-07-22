@@ -15,7 +15,7 @@
   --page-pad: clamp(1.25rem,4vw,4.75rem);
 }
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; }
+html { min-width: 320px; overflow-y: scroll; background: var(--bg); scrollbar-width: auto; -ms-overflow-style: auto; scroll-behavior: smooth; }
 html.is-explore-locked { overscroll-behavior: none; touch-action: none; }
 body { min-width: 320px; min-height: 100%; margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text); }
 html::-webkit-scrollbar { width: 12px; }
