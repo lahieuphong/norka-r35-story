@@ -28,7 +28,7 @@ export function Header({ exploreActive }: Props) {
   }), []);
 
   return (
-    <header className={`site-header${exploreActive ? ' is-muted' : ''}`} data-story-index={indicator.current} inert={exploreActive}>
+    <header className={`site-header${exploreActive ? ' is-muted' : ''}`} inert={exploreActive}>
       <a className='wordmark' href='#explore' aria-label='NORKA R35 — back to the beginning'>
         <img className='wordmark__logo' src='/brand/norka-compass-logo-512.png' width='44' height='44' alt='' aria-hidden='true' />
         <span className='wordmark__text'><span>NORKA</span><strong>R35</strong></span>
