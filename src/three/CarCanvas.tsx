@@ -50,6 +50,20 @@ function WebGLFallback({ onFailure }: { readonly onFailure: () => void }) {
     document.body,
   );
 }
+
+function canCreateWebGL2(): boolean {
+  try {
+    if (typeof WebGL2RenderingContext === 'undefined') return false;
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('webgl2', { failIfMajorPerformanceCaveat: false });
+    if (!context) return false;
+    context.getExtension('WEBGL_lose_context')?.loseContext();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly onFailure: () => void }, { readonly failed: boolean }> {
   public override state = { failed: false };
   public static getDerivedStateFromError(): { failed: boolean } { return { failed: true }; }
@@ -60,7 +74,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
   public override render(): ReactNode { return this.state.failed ? <WebGLFallback onFailure={this.props.onFailure} /> : this.props.children; }
 }
 
-export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete }: Props) {
+function WebGLCarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete }: Props) {
   const profile = useProfile();
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const shot = useMemo(() => getShotSet(profile.compact, profile.landscape)[INITIAL_STORY_SHOT], [profile.compact, profile.landscape]);
@@ -107,7 +121,7 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
           <VisibilityController />
           <CameraRig controlsRef={controlsRef} compact={profile.compact} landscape={profile.landscape} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
           <Suspense fallback={null}>
-            <Lighting shadowResolution={profile.lowEnd || profile.isMobile ? 256 : 512} />
+            <Lighting shadowResolution={profile.lowEnd ? 256 : 512} />
             <CarModel anisotropy={profile.anisotropy} onReady={onModelReady} />
           </Suspense>
           <OrbitControls ref={controlsRef} enabled={interactive} enableDamping dampingFactor={0.075} enablePan={false} enableZoom enableRotate minDistance={profile.isMobile ? 4.4 : 3.4} maxDistance={profile.isMobile ? 13.5 : 10.5} minPolarAngle={0.34} maxPolarAngle={Math.PI * 0.49} rotateSpeed={0.58} zoomSpeed={0.72} />
@@ -115,4 +129,11 @@ export function CarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWe
       </CanvasBoundary>
     </div>
   );
+}
+
+export function CarCanvas(props: Props) {
+  const [webgl2Available] = useState(canCreateWebGL2);
+  return webgl2Available
+    ? <WebGLCarCanvas {...props} />
+    : <WebGLFallback onFailure={props.onWebGLFailure} />;
 }

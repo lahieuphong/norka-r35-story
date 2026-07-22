@@ -41,7 +41,7 @@ The production output is `dist/`. `vercel.json` is included; on Vercel use the V
 
 Each generated web GLB is self-contained and embeds every car texture once. Run `yarn inspect:model`, `yarn inspect:model:mobile`, or `yarn inspect:model:original` for file size, topology, KTX2 mode, texels, and model-only GPU-memory estimates. The visible footer attribution is read from `asset.extras` at runtime, with a defensive fallback only when metadata is absent; it also credits the vecarz material presentation.
 
-Without an override, runtime selects `mobile` for phones, coarse-pointer tablets, and devices reporting no more than 4 GB or 4 logical CPU cores. Other devices receive `desktop`. Set `VITE_MODEL_VARIANT=original`, `desktop`, or `mobile` only when forcing a comparison build.
+Without an override, runtime selects `mobile` for phones, coarse-pointer tablets, genuinely constrained devices reporting no more than 2 GB or 2 logical CPU cores, GPUs limited to textures below 4096px, and renderers without a KTX2 compressed-texture target. Four-core/4 GB browser hints are not treated as low-end because browsers commonly clamp those values for privacy. Other devices receive `desktop`. `VITE_MODEL_VARIANT=original`, `desktop`, or `mobile` is honored only by the development server for controlled comparisons; production always keeps the capability guardrails.
 
 ## Scroll and camera architecture
 
@@ -92,7 +92,7 @@ VITE_SCROLL_MARKERS=true yarn dev
 
 The original GLB is never overwritten. The downloaded model contains the complete geometry, UV sets, nodes, and 64 material slots, but the linked vecarz edition applies its dark carbon, black cabin, wheel, glass, and PBR settings inside the Sketchfab viewer. Those overrides are not stored in the downloadable GLB, which is why the untreated model renders large exterior and interior areas white or gray.
 
-At runtime, `src/three/materialAdjustments.ts` restores the linked edition by exact material name. It applies the recovered linear color factors, metalness, roughness, opacity, clearcoat, alpha cutouts, UV channels, and adaptive 2×/4×/8× anisotropic sampling; it reuses maps embedded in the selected GLB and disables the three white emissive overrides that were not enabled in the reference presentation. Geometry, proportions, material slots, and camera normalization are unchanged.
+At runtime, `src/three/materialAdjustments.ts` restores the linked edition by exact material name. It applies the recovered linear color factors, metalness, roughness, opacity, clearcoat, alpha cutouts, UV channels, and adaptive 4×/8× anisotropic sampling; it reuses maps embedded in the selected GLB and disables the three white emissive overrides that were not enabled in the reference presentation. Geometry, proportions, material slots, and camera normalization are unchanged.
 
 The optimizer embeds the checked-in paint, carbon albedo/normal, glass, seams, and interior decal albedo/normal maps into their named material slots. The runtime therefore does not download or decode a second copy of those textures. The separate ground AO source is intentionally not attached to the car because the scene provides a one-frame contact shadow.
 
@@ -130,17 +130,17 @@ python scripts/generate-studio-hdr.py
 - Both web variants retain 436 nodes, 195 meshes, and the original 422,512-triangle render topology. Desktop is 12,194,060 bytes and mobile is 11,896,468 bytes versus the 29,448,924-byte source.
 - Seventeen constant maps are folded into factors. Each output contains 54 textures: 37 UASTC, 11 ETC1S, and 6 tiny PNG maps. Desktop retains 65,406,976 texels; mobile retains 27,658,240.
 - Model-only GPU estimates are 85,667,548 texture + 7,016,018 geometry bytes on desktop, and 35,335,900 texture + 7,016,018 geometry bytes on mobile. Compared with the previous PNG variants, texture payload falls by about 76% while hero-map resolution is unchanged.
-- Chrome CDP measured the complete model + HDR/contact-shadow scene at about 110 MiB on `1440 × 900` desktop (previously about 410 MiB) and 56 MiB on `390 × 844` mobile (previously about 170 MiB), before each browser-owned default framebuffer. With no input for three seconds, the demand loop issued zero draw calls instead of roughly 25,740 desktop / 39,600 mobile. A 3.2-second automated story scroll delivered all 192 RAF samples on both profiles, with approximately 17.3 ms p95 and no sample above 33 ms or long task.
+- Chrome CDP after the mobile-quality pass confirmed a `780 × 1688` drawing buffer on a typical `390 × 844` DPR-3 phone profile and `585 × 1266` on the constrained 2 GB/2-core tier. With no input for three seconds, the demand loop issued zero draw calls instead of roughly 25,740 desktop / 39,600 mobile. A 3.2-second automated story scroll delivered all 192 RAF samples on both profiles, with approximately 17.3 ms p95 and no sample above 33 ms or long task.
 - All 64 runtime materials were matched against the linked Sketchfab viewer profile; the wing, splitter, diffuser, grille, wheels, cabin plastics, leather, fabric, carbon, displays, glass, and red seams were visually re-checked after restoration.
 - The production bundle was checked for development HUD strings; none were present.
 - Camera framing and section layout were reviewed at `1440 × 900`, `1024 × 768`, `768 × 1024`, `390 × 844`, `320 × 568`, `667 × 375`, and `844 × 390` using the model's exact geometry and production copy.
-- All 12 final section compositions were re-captured at `1440 × 900` and `390 × 844`; the new rear shot and adjacent camera paths were additionally checked at `768 × 1024` and `844 × 390`.
+- All 12 final section compositions were re-captured after the quality pass at `390 × 844`, `320 × 568`, and `844 × 390`; the full desktop set and tablet compositions remain covered by the earlier framing pass.
 - Aerodynamics measured approximately `67.58%` of viewport width on desktop and `73.94%` on mobile, within the requested `65–75%` range.
 - Desktop and mobile shots were checked individually for full-car clearance, hood/front recognition, rear-left wheel/brake emphasis, complete direct-rear treatment, cabin coverage, and Explore starting distance.
 
 ## Performance and resilience
 
-DPR is capped at 2 on desktop, 1.5 on mobile, and 1.25 on low-end devices, with additional 4.0/2.0/1.25-megapixel budgets to avoid oversized framebuffers on large displays. MSAA remains on for normal phones and low-DPR desktops, is unnecessary on supersampled desktop output, and is disabled for low-end hardware. A one-frame 512px/256px contact shadow replaces the persistent directional shadow map and duplicate 195-mesh depth pass.
+DPR is capped at 2 on normal desktop/mobile devices and 1.5 on the constrained tier, with additional 4.0/3.0/1.75-megapixel budgets. Oversized ultrawide/4K/5K canvases may render below DPR 1 (down to 0.5) so those budgets remain real. Constrained hardware never allocates MSAA; normal mobile enables it only below DPR 1.9 and 1.5 megapixels, while desktop additionally limits it to 2.25 megapixels. A one-frame 512px contact shadow (256px only on constrained hardware) replaces the persistent directional shadow map and duplicate 195-mesh depth pass.
 
 The canvas uses `frameloop="demand"`: scrolling, GSAP transitions, OrbitControls, resizing, and visibility changes explicitly request frames, while a static page consumes no render loop. Rendering is fully suspended while the tab is hidden. The scene avoids per-frame allocations, uses no postprocessing stack, limits Basis decode concurrency to two workers, and provides a visible WebGL fallback.
 

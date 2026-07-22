@@ -11,13 +11,28 @@ import { storyVisualState } from './storyState';
 
 const URLS = { original: '/models/norka-r35-original.glb', desktop: '/models/norka-r35-desktop.glb', mobile: '/models/norka-r35-mobile.glb' } as const;
 type ModelVariant = keyof typeof URLS;
-function selectRuntimeVariant(): ModelVariant {
-  const forced = import.meta.env.VITE_MODEL_VARIANT;
-  if (forced === 'original' || forced === 'desktop' || forced === 'mobile') return forced;
-  return shouldUseMobileModel() ? 'mobile' : 'desktop';
+const COMPRESSED_TEXTURE_EXTENSIONS = [
+  'WEBGL_compressed_texture_astc',
+  'EXT_texture_compression_bptc',
+  'WEBGL_compressed_texture_etc',
+  'WEBGL_compressed_texture_etc1',
+  'WEBGL_compressed_texture_s3tc',
+  'WEBGL_compressed_texture_pvrtc',
+] as const;
+
+function supportsGpuCompressedTextures(renderer: THREE.WebGLRenderer): boolean {
+  return COMPRESSED_TEXTURE_EXTENSIONS.some((extension) => renderer.extensions.has(extension));
 }
-export const RUNTIME_MODEL_VARIANT = selectRuntimeVariant();
-export const RUNTIME_MODEL_URL = URLS[RUNTIME_MODEL_VARIANT];
+
+function selectRuntimeVariant(renderer: THREE.WebGLRenderer): ModelVariant {
+  const forced = import.meta.env.VITE_MODEL_VARIANT;
+  // Overrides are comparison tools only. In production, capability checks must
+  // always win so an accidental environment value cannot ship the 8K original.
+  if (import.meta.env.DEV && (forced === 'original' || forced === 'desktop' || forced === 'mobile')) return forced;
+  if (shouldUseMobileModel()) return 'mobile';
+  if (renderer.capabilities.maxTextureSize < 4096) return 'mobile';
+  return supportsGpuCompressedTextures(renderer) ? 'desktop' : 'mobile';
+}
 export interface ModelAttribution { readonly title: string; readonly author: string; readonly license: string; }
 export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-norka_varis_r35', author: 'MattDoesBlender', license: 'CC BY-NC-SA 4.0' };
 export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
@@ -112,7 +127,8 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
 
 export function CarModel({ anisotropy, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
-  const gltf = useGLTF(RUNTIME_MODEL_URL, false, true, (loader) => configureKTX2Loader(loader, renderer));
+  const modelVariant = useMemo(() => selectRuntimeVariant(renderer), [renderer]);
+  const gltf = useGLTF(URLS[modelVariant], false, true, (loader) => configureKTX2Loader(loader, renderer));
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
   const reported = useRef(false);
   const renderedGlassOpacity = useRef(Number.NaN);

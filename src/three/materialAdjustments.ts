@@ -142,9 +142,11 @@ function applyProfile(
   }
 
   if (profile.opacity !== undefined) {
-    material.transparent = true;
+    const wasBlended = material.transparent;
     material.opacity = profile.opacity;
-    material.depthWrite = false;
+    const blends = profile.opacity < 1 || wasBlended;
+    material.transparent = blends;
+    material.depthWrite = !blends;
   }
 
   if (profile.alphaTest !== undefined) {
