@@ -1,11 +1,13 @@
 import { usesCompactCamera, usesLandscapeCamera } from './cameraShots';
 
+export type ModelTier = 'desktop' | 'mobile' | 'mobile-low';
+
 export interface DeviceProfile {
   readonly isMobile: boolean;
   readonly compact: boolean;
   readonly landscape: boolean;
   readonly lowEnd: boolean;
-  readonly useMobileModel: boolean;
+  readonly modelTier: ModelTier;
   readonly dpr: number;
   readonly antialias: boolean;
   readonly anisotropy: number;
@@ -26,12 +28,9 @@ function readHardwareHints(): { readonly touch: boolean; readonly lowEnd: boolea
   return { touch, lowEnd: lowMemory || lowCpu };
 }
 
-export function shouldUseMobileModel(): boolean {
-  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
-  const { touch, lowEnd } = readHardwareHints();
-  const shortEdge = Math.min(window.innerWidth, window.innerHeight);
-  const mobileViewport = window.innerWidth <= 767 || (touch && shortEdge <= 1024);
-  return mobileViewport || lowEnd;
+function selectModelTier(isMobile: boolean, lowEnd: boolean): ModelTier {
+  if (!isMobile) return 'desktop';
+  return lowEnd ? 'mobile-low' : 'mobile';
 }
 
 export function readDeviceProfile(): DeviceProfile {
@@ -46,21 +45,25 @@ export function readDeviceProfile(): DeviceProfile {
   // A DPR floor of 1 defeats the pixel budget on ultrawide, 4K, and 5K
   // desktops. Rendering slightly below native resolution is substantially
   // cheaper than allocating a full-resolution multisampled framebuffer.
-  const dpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap, budgetDpr));
+  const rawDpr = Math.max(0.5, Math.min(window.devicePixelRatio || 1, cap, budgetDpr));
+  // Mobile browser chrome can emit many tiny viewport-height changes while it
+  // collapses. Quantized DPR steps avoid reallocating render targets for every
+  // one of those changes and never exceed the calculated pixel budget.
+  const dpr = isMobile
+    ? Math.max(0.5, Math.floor((rawDpr + Number.EPSILON) * 4) / 4)
+    : rawDpr;
   const renderPixels = width * height * dpr * dpr;
   return {
     isMobile,
     compact: usesCompactCamera(width, height),
     landscape: usesLandscapeCamera(width, height),
     lowEnd,
-    useMobileModel: isMobile || lowEnd,
+    modelTier: selectModelTier(isMobile, lowEnd),
     dpr,
-    // Constrained hardware never pays for a multisampled framebuffer. Normal
-    // phones use MSAA only below 2x supersampling, and desktop MSAA is limited
-    // by both DPR and render-target area so native 4K cannot enable it.
-    antialias: !lowEnd && (isMobile
-      ? dpr < 1.9 && renderPixels <= 1_500_000
-      : dpr <= 1.25 && renderPixels <= 2_250_000),
+    // Mobile already renders at up to 2x DPR. Avoiding a multisampled default
+    // framebuffer saves considerably more memory than MSAA adds in edge
+    // quality there. Keep the existing guarded desktop behavior unchanged.
+    antialias: !isMobile && !lowEnd && dpr <= 1.25 && renderPixels <= 2_250_000,
     anisotropy: lowEnd ? 4 : 8,
   };
 }

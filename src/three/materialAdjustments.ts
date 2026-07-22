@@ -95,6 +95,14 @@ const MATERIAL_PROFILES = {
 
 const SHADOWLESS_GLASS = new Set(['black_glass', 'ext_glass', 'INT_Glass_DISPLAY', 'INT_Display_Glass']);
 const EMISSIVE_DISABLED = new Set(['INT_Decals_EMISSIVE', 'INT_Decals_EMISSIVE_Ref', 'INT_Decals_Display']);
+// These imported BLEND materials are thin alpha-atlas surfaces (plus an
+// invisible display overlay). Rendering both sides in one pass preserves the
+// cutout while avoiding Three's two-draw transparent DoubleSide path. Visible
+// vehicle/display glass stays two-pass.
+const SAFE_SINGLE_PASS_TRANSPARENT = new Set(['ext_grill', 'Material_52', 'INT_Glass_DISPLAY']);
+// Material_53's source alpha is entirely opaque (254-255); unlike the nearby
+// Material_52 wheel cutout, blending only adds sorting and depth-write costs.
+const DEFINITELY_OPAQUE_BLENDS = new Set(['Material_53']);
 
 function cloneNormalMap(source: THREE.Texture, channel: number, repeat: number): THREE.Texture {
   const texture = source.clone();
@@ -171,7 +179,12 @@ function applyTextureSampling(material: THREE.Material, anisotropy: number): voi
   });
 }
 
-export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMaterialMaps, anisotropy = 1): void {
+export function applyMaterialAdjustments(
+  root: THREE.Object3D,
+  maps: ReferenceMaterialMaps,
+  anisotropy = 1,
+  mobileOptimizations = false,
+): void {
   const visited = new Set<THREE.Material>();
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return;
@@ -194,9 +207,24 @@ export function applyMaterialAdjustments(root: THREE.Object3D, maps: ReferenceMa
       const profile: MaterialProfile | undefined = MATERIAL_PROFILES[material.name as keyof typeof MATERIAL_PROFILES];
       if (profile) applyProfile(material, profile, maps);
 
+      if (mobileOptimizations && DEFINITELY_OPAQUE_BLENDS.has(material.name)) {
+        material.opacity = 1;
+        material.transparent = false;
+        material.depthWrite = true;
+      }
+
       if (SHADOWLESS_GLASS.has(material.name)) {
         material.transparent = true;
         material.depthWrite = false;
+      }
+
+      if (
+        mobileOptimizations
+        && SAFE_SINGLE_PASS_TRANSPARENT.has(material.name)
+        && material.transparent
+        && material.side === THREE.DoubleSide
+      ) {
+        material.forceSinglePass = true;
       }
 
       if (EMISSIVE_DISABLED.has(material.name)) {

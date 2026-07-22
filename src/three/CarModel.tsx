@@ -8,14 +8,18 @@ import type { GLTFLoader } from 'three-stdlib';
 import { applyMaterialAdjustments, type ReferenceMaterialMaps } from './materialAdjustments';
 import { computeModelNormalization, type ModelNormalization } from './modelNormalization';
 import { storyVisualState } from './storyState';
+import type { ModelTier } from './deviceProfile';
 
 const URLS = {
   original: '/models/norka-r35-original.glb',
   desktop: '/models/norka-r35-desktop.glb',
   mobile: '/models/norka-r35-mobile.glb',
+  'mobile-low': '/models/norka-r35-mobile-low.glb',
+  'mobile-fallback': '/models/norka-r35-mobile-fallback.glb',
   fallback: '/models/norka-r35-fallback.glb',
 } as const;
 type ModelVariant = keyof typeof URLS;
+const GPU_COMPRESSED_VARIANTS: ReadonlySet<ModelVariant> = new Set(['desktop', 'mobile', 'mobile-low']);
 const COMPRESSED_TEXTURE_EXTENSIONS = [
   'WEBGL_compressed_texture_astc',
   'EXT_texture_compression_bptc',
@@ -30,24 +34,27 @@ function supportsGpuCompressedTextures(renderer: THREE.WebGLRenderer): boolean {
   return COMPRESSED_TEXTURE_EXTENSIONS.some((extension) => renderer.extensions.has(extension));
 }
 
-function selectRuntimeVariant(renderer: THREE.WebGLRenderer, preferMobile: boolean): ModelVariant {
+function selectRuntimeVariant(renderer: THREE.WebGLRenderer, modelTier: ModelTier): ModelVariant {
   const forced = import.meta.env.VITE_MODEL_VARIANT;
   // Overrides are comparison tools only. In production, capability checks must
   // always win so an accidental environment value cannot ship the 8K original.
-  if (import.meta.env.DEV && (forced === 'original' || forced === 'desktop' || forced === 'mobile' || forced === 'fallback')) return forced;
-  // On GPUs without any compressed target, a smaller PNG GLB has a much lower
-  // unified-memory peak and does not start the transcoder at all.
-  if (!supportsGpuCompressedTextures(renderer)) return 'fallback';
-  if (preferMobile) return 'mobile';
-  if (renderer.capabilities.maxTextureSize < 4096) return 'mobile';
-  return 'desktop';
+  if (import.meta.env.DEV && forced && Object.prototype.hasOwnProperty.call(URLS, forced)) return forced as ModelVariant;
+  // On GPUs without any compressed target, use the smaller mobile PNG set for
+  // either mobile tier. Desktop retains its existing compatibility fallback.
+  if (!supportsGpuCompressedTextures(renderer)) return modelTier === 'desktop' ? 'fallback' : 'mobile-fallback';
+  // A texture-size ceiling below the desktop hero maps must override viewport
+  // heuristics. Mobile GPUs capped at exactly 4096 also use the lower tier to
+  // leave headroom for browser and renderer allocations.
+  if (renderer.capabilities.maxTextureSize < 4096) return 'mobile-low';
+  if (modelTier !== 'desktop' && renderer.capabilities.maxTextureSize === 4096) return 'mobile-low';
+  return modelTier;
 }
 export interface ModelAttribution { readonly title: string; readonly author: string; readonly license: string; }
 export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-norka_varis_r35', author: 'MattDoesBlender', license: 'CC BY-NC-SA 4.0' };
 export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
 interface Props {
   readonly anisotropy: number;
-  readonly preferMobile: boolean;
+  readonly modelTier: ModelTier;
   readonly onReady: (details: ModelReadyDetails) => void;
 }
 
@@ -147,12 +154,12 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ anisotropy, preferMobile, onReady }: Props) {
+export function CarModel({ anisotropy, modelTier, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
-  const modelVariant = useMemo(() => selectRuntimeVariant(renderer, preferMobile), [preferMobile, renderer]);
+  const modelVariant = useMemo(() => selectRuntimeVariant(renderer, modelTier), [modelTier, renderer]);
   const modelUrl = URLS[modelVariant];
   const extendLoader = useCallback((loader: GLTFLoader) => {
-    if (modelVariant === 'desktop' || modelVariant === 'mobile') configureKTX2Loader(loader, renderer);
+    if (GPU_COMPRESSED_VARIANTS.has(modelVariant)) configureKTX2Loader(loader, renderer);
   }, [modelVariant, renderer]);
   const gltf = useGLTF(modelUrl, false, true, extendLoader);
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -165,7 +172,12 @@ export function CarModel({ anisotropy, preferMobile, onReady }: Props) {
     isolateSceneMaterials(scene);
     const normalization = computeModelNormalization(scene);
     const referenceMaps = readEmbeddedReferenceMaps(scene);
-    applyMaterialAdjustments(scene, referenceMaps, Math.min(anisotropy, maxAnisotropy));
+    applyMaterialAdjustments(
+      scene,
+      referenceMaps,
+      Math.min(anisotropy, maxAnisotropy),
+      modelTier !== 'desktop',
+    );
     let nodeCount = 0;
     let meshCount = 0;
     const geometries = new Set<THREE.BufferGeometry>();
@@ -199,7 +211,7 @@ export function CarModel({ anisotropy, preferMobile, onReady }: Props) {
       ownedMaterials: [...materials],
       ownedTextures: [...textures],
     };
-  }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy]);
+  }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy, modelTier]);
   useLayoutEffect(() => {
     // useGLTF resolves only after every embedded texture has finished loading,
     // so the transcoder pool is no longer needed here.
@@ -213,8 +225,9 @@ export function CarModel({ anisotropy, preferMobile, onReady }: Props) {
       GLTF_CLEAR_TIMERS.delete(modelUrl);
     }
     root.dataset.modelVariant = modelVariant;
-    root.dataset.textureCompression = modelVariant === 'desktop' || modelVariant === 'mobile'
+    root.dataset.textureCompression = GPU_COMPRESSED_VARIANTS.has(modelVariant)
       ? 'gpu-compressed'
+      : modelVariant === 'mobile-fallback' ? 'png-mobile-fallback'
       : modelVariant === 'fallback' ? 'png-fallback' : 'png-original';
     return () => {
       if (root.dataset.modelVariant === modelVariant) {
@@ -257,10 +270,10 @@ export function CarModel({ anisotropy, preferMobile, onReady }: Props) {
     });
   });
   useLayoutEffect(() => {
-    const selection = modelVariant + ':' + String(preferMobile);
+    const selection = modelVariant + ':' + modelTier;
     if (reportedSelection.current === selection) return;
     reportedSelection.current = selection;
     onReady({ normalization: prepared.normalization, nodeCount: prepared.nodeCount, meshCount: prepared.meshCount, materialCount: prepared.materialCount, attribution: prepared.attribution });
-  }, [modelVariant, onReady, preferMobile, prepared]);
+  }, [modelTier, modelVariant, onReady, prepared]);
   return <group position={prepared.normalization.offset}><primitive object={prepared.scene} dispose={null} /></group>;
 }

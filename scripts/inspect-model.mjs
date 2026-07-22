@@ -1,8 +1,8 @@
 import { stat } from 'node:fs/promises';
 import { relative, resolve } from 'node:path';
-import { NodeIO } from '@gltf-transform/core';
+import { getBounds, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { inspect } from '@gltf-transform/functions';
+import { inspect, uninstance } from '@gltf-transform/functions';
 import { MeshoptDecoder } from 'meshoptimizer';
 
 const file = resolve(process.argv[2] ?? 'public/models/norka-r35-desktop.glb');
@@ -13,11 +13,24 @@ const io = new NodeIO()
 const document = await io.read(file);
 const root = document.getRoot();
 const report = inspect(document);
+let worldBounds = {
+  min: report.scenes.properties[0]?.bboxMin ?? [],
+  max: report.scenes.properties[0]?.bboxMax ?? [],
+};
+// glTF-Transform's generic getBounds/inspect path intentionally ignores
+// EXT_mesh_gpu_instancing. Expand a second in-memory copy for an accurate QA
+// bound without changing the model used by the rest of this report.
+if (root.listExtensionsUsed().some((extension) => extension.extensionName === 'EXT_mesh_gpu_instancing')) {
+  const boundsDocument = await io.read(file);
+  await boundsDocument.transform(uninstance());
+  const boundsScene = boundsDocument.getRoot().listScenes()[0];
+  if (boundsScene) worldBounds = getBounds(boundsScene);
+}
 const textures = report.textures.properties;
 const fileStats = await stat(file);
 const sum = (values) => values.reduce((total, value) => total + value, 0);
 const toMiB = (bytes) => Number((bytes / 1024 / 1024).toFixed(2));
-const textureGPUBytes = sum(textures.map((texture) => texture.gpuSize ?? 0));
+const textureGPUBytes = Math.ceil(sum(textures.map((texture) => texture.gpuSize ?? 0)));
 const textureSourceBytes = sum(textures.map((texture) => texture.size));
 const geometryGPUBytes = sum(root.listAccessors().map((accessor) => accessor.getArray()?.byteLength ?? 0));
 const rgba32MipBytes = (width, height) => {
@@ -44,6 +57,23 @@ const textureTexels = sum(root.listTextures().map((texture) => {
   return size ? size[0] * size[1] : 0;
 }));
 const compressedTextures = textures.filter((texture) => texture.mimeType === 'image/ktx2');
+let basePrimitiveDraws = 0;
+let instancedMeshBatches = 0;
+let instancedCopies = 0;
+for (const scene of root.listScenes()) {
+  scene.traverse((node) => {
+    const mesh = node.getMesh();
+    if (!mesh) return;
+    basePrimitiveDraws += mesh.listPrimitives().length;
+    const batch = node.getExtension('EXT_mesh_gpu_instancing');
+    if (!batch) return;
+    const attribute = batch.getAttribute('TRANSLATION')
+      ?? batch.getAttribute('ROTATION')
+      ?? batch.getAttribute('SCALE');
+    instancedMeshBatches += 1;
+    instancedCopies += attribute?.getCount() ?? 0;
+  });
+}
 const interestingNodeNames = new Set([
   'body_11', 'carbon_12', 'Engine_23', 'WHEEL_LF_74', 'WHEEL_LR_85', 'WHEEL_RF_96', 'WHEEL_RR_107',
   'SUSP_LF_56', 'SUSP_LR_58', 'SUSP_RF_60', 'SUSP_RR_62', 'hoodanim_242', 'hood_236', 'hood_grills_237',
@@ -62,7 +92,12 @@ console.log(JSON.stringify({
     materials: root.listMaterials().length,
     textures: root.listTextures().length,
     animations: root.listAnimations().length,
+    primitiveDefinitions: sum(root.listMeshes().map((mesh) => mesh.listPrimitives().length)),
+    basePrimitiveDraws,
+    instancedMeshBatches,
+    instancedCopies,
   },
+  worldBounds,
   gpuEstimate: {
     nominalTextureBytes: textureGPUBytes,
     nominalTextureMiB: toMiB(textureGPUBytes),

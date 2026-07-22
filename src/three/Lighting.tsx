@@ -2,8 +2,11 @@ import { ContactShadows, Environment } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
 
-interface Props { readonly shadowResolution: 256 | 512; }
-export function Lighting({ shadowResolution }: Props) {
+interface Props {
+  readonly mobileOptimized: boolean;
+  readonly shadowResolution: 256 | 512;
+}
+export function Lighting({ mobileOptimized, shadowResolution }: Props) {
   const scene = useThree((state) => state.scene);
   useEffect(() => {
     const previous = scene.environmentIntensity;
@@ -12,7 +15,10 @@ export function Lighting({ shadowResolution }: Props) {
   }, [scene]);
   return (
     <>
-      <Environment files="/hdr/automotive-studio.hdr" background={false} />
+      <Environment
+        files={mobileOptimized ? '/hdr/automotive-studio-mobile.hdr' : '/hdr/automotive-studio.hdr'}
+        background={false}
+      />
       <ambientLight intensity={0.32} />
       <directionalLight
         color="#ffffff"
