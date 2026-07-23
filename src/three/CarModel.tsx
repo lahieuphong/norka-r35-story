@@ -6,9 +6,14 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import type { GLTFLoader } from 'three-stdlib';
 import { applyMaterialAdjustments, type ReferenceMaterialMaps } from './materialAdjustments';
+import { DoorHotspot } from './DoorHotspot';
+import { createDriverDoorAssembly } from './doorAssembly';
+import type { ExplorePhase, ExploreViewPhase } from './experienceTypes';
+import { DRIVER_DOOR_OPEN_ANGLE } from './interiorTransitionShots';
 import { computeModelNormalization, type ModelNormalization } from './modelNormalization';
 import { storyVisualState } from './storyState';
 import type { ModelTier } from './deviceProfile';
+import type { VehicleInteractionRig } from './VehicleInteractionRig';
 
 const URLS = {
   original: '/models/norka-r35-original.glb',
@@ -54,7 +59,11 @@ export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-no
 export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
 interface Props {
   readonly anisotropy: number;
+  readonly interactionRig: VehicleInteractionRig;
   readonly modelTier: ModelTier;
+  readonly phase: ExplorePhase;
+  readonly viewPhase: ExploreViewPhase;
+  readonly onEnterInterior: () => void;
   readonly onReady: (details: ModelReadyDetails) => void;
 }
 
@@ -154,7 +163,7 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ anisotropy, modelTier, onReady }: Props) {
+export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPhase, onEnterInterior, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
   const modelVariant = useMemo(() => selectRuntimeVariant(renderer, modelTier), [modelTier, renderer]);
   const modelUrl = URLS[modelVariant];
@@ -170,6 +179,7 @@ export function CarModel({ anisotropy, modelTier, onReady }: Props) {
     // SkeletonUtils keeps materials and textures shared with useGLTF's cache.
     // Isolate them before applying runtime profiles or per-frame glass fades.
     isolateSceneMaterials(scene);
+    const driverDoor = createDriverDoorAssembly(scene);
     const normalization = computeModelNormalization(scene);
     const referenceMaps = readEmbeddedReferenceMaps(scene);
     applyMaterialAdjustments(
@@ -206,6 +216,7 @@ export function CarModel({ anisotropy, modelTier, onReady }: Props) {
       meshCount,
       materialCount: materials.size,
       attribution,
+      driverDoor,
       glassMaterials,
       ownedGeometries: [...geometries],
       ownedMaterials: [...materials],
@@ -262,7 +273,10 @@ export function CarModel({ anisotropy, modelTier, onReady }: Props) {
     };
   }, [prepared]);
   useFrame(() => {
-    const opacity = THREE.MathUtils.clamp(storyVisualState.glassOpacity, 0, 1);
+    if (prepared.driverDoor) {
+      prepared.driverDoor.pivot.rotation.y = DRIVER_DOOR_OPEN_ANGLE * THREE.MathUtils.clamp(interactionRig.doorProgress, 0, 1);
+    }
+    const opacity = THREE.MathUtils.clamp(storyVisualState.glassOpacity * interactionRig.glassOpacity, 0, 1);
     if (Math.abs(renderedGlassOpacity.current - opacity) < 0.001) return;
     renderedGlassOpacity.current = opacity;
     prepared.glassMaterials.forEach(({ material, baseOpacity }) => {
@@ -275,5 +289,15 @@ export function CarModel({ anisotropy, modelTier, onReady }: Props) {
     reportedSelection.current = selection;
     onReady({ normalization: prepared.normalization, nodeCount: prepared.nodeCount, meshCount: prepared.meshCount, materialCount: prepared.materialCount, attribution: prepared.attribution });
   }, [modelTier, modelVariant, onReady, prepared]);
-  return <group position={prepared.normalization.offset}><primitive object={prepared.scene} dispose={null} /></group>;
+  return (
+    <group position={prepared.normalization.offset}>
+      <primitive object={prepared.scene} dispose={null} />
+      <DoorHotspot
+        available={Boolean(prepared.driverDoor)}
+        phase={phase}
+        viewPhase={viewPhase}
+        onActivate={onEnterInterior}
+      />
+    </group>
+  );
 }

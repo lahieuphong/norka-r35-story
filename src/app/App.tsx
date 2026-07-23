@@ -7,7 +7,7 @@ import { StorySection } from '../components/StorySection';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { CarCanvas } from '../three/CarCanvas';
 import { DEFAULT_MODEL_ATTRIBUTION, type ModelAttribution, type ModelReadyDetails } from '../three/CarModel';
-import type { ExplorePhase } from '../three/experienceTypes';
+import type { ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
 import { disableStoryScrollTriggers, enableStoryScrollTriggers } from '../three/storyState';
 
 const CameraDebugHUD = import.meta.env.DEV ? lazy(() => import('../components/CameraDebugHUD')) : null;
@@ -19,6 +19,9 @@ export function App() {
   const [webglFailed, setWebglFailed] = useState(false);
   const [modelAttribution, setModelAttribution] = useState<ModelAttribution>(DEFAULT_MODEL_ATTRIBUTION);
   const [phase, setPhase] = useState<ExplorePhase>('story');
+  const [viewPhase, setViewPhase] = useState<ExploreViewPhase>('exterior');
+  const phaseRef = useRef<ExplorePhase>('story');
+  const viewPhaseRef = useRef<ExploreViewPhase>('exterior');
   const lockedY = useRef(0);
   const exploreButtonRef = useRef<HTMLButtonElement>(null);
   const bodySnapshot = useRef<BodySnapshot | null>(null);
@@ -61,15 +64,47 @@ export function App() {
   const onModelReady = useCallback((details: ModelReadyDetails): void => { setModelAttribution(details.attribution); setModelReady(true); }, []);
   const onWebGLFailure = useCallback((): void => setWebglFailed(true), []);
   const enterExplore = useCallback((): void => {
-    if (!modelReady || phase !== 'story') return;
+    if (!modelReady || phaseRef.current !== 'story') return;
+    phaseRef.current = 'entering';
     disableStoryScrollTriggers(); lockScroll(); setPhase('entering');
-  }, [lockScroll, modelReady, phase]);
-  const enterComplete = useCallback((): void => setPhase((value) => value === 'entering' ? 'explore' : value), []);
-  const exitExplore = useCallback((): void => setPhase((value) => value === 'explore' ? 'exiting' : value), []);
+  }, [lockScroll, modelReady]);
+  const enterComplete = useCallback((): void => {
+    if (phaseRef.current !== 'entering') return;
+    phaseRef.current = 'explore';
+    setPhase('explore');
+  }, []);
+  const exitExplore = useCallback((): void => {
+    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+    phaseRef.current = 'exiting';
+    setPhase('exiting');
+  }, []);
+  const enterInterior = useCallback((): void => {
+    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+    viewPhaseRef.current = 'enteringInterior';
+    setViewPhase('enteringInterior');
+  }, []);
+  const interiorEnterComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'enteringInterior') return;
+    viewPhaseRef.current = 'interior';
+    setViewPhase('interior');
+  }, []);
+  const exitInterior = useCallback((): void => {
+    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'interior') return;
+    viewPhaseRef.current = 'exitingInterior';
+    setViewPhase('exitingInterior');
+  }, []);
+  const interiorExitComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'exitingInterior') return;
+    viewPhaseRef.current = 'exterior';
+    setViewPhase('exterior');
+  }, []);
   const exitComplete = useCallback((): void => {
     unlockScroll();
     requestAnimationFrame(() => {
       enableStoryScrollTriggers();
+      phaseRef.current = 'story';
+      viewPhaseRef.current = 'exterior';
+      setViewPhase('exterior');
       setPhase('story');
       requestAnimationFrame(() => exploreButtonRef.current?.focus());
     });
@@ -79,7 +114,19 @@ export function App() {
   return (
     <div className={`experience${exploreActive ? ' experience--explore' : ''}`}>
       <a className="skip-link" href="#explore" tabIndex={exploreActive ? -1 : undefined}>Skip to the story</a>
-      <CarCanvas modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onModelReady={onModelReady} onWebGLFailure={onWebGLFailure} onEnterComplete={enterComplete} onExitComplete={exitComplete} />
+      <CarCanvas
+        modelReady={modelReady}
+        phase={phase}
+        viewPhase={viewPhase}
+        reducedMotion={reducedMotion}
+        onModelReady={onModelReady}
+        onWebGLFailure={onWebGLFailure}
+        onEnterComplete={enterComplete}
+        onExitComplete={exitComplete}
+        onEnterInterior={enterInterior}
+        onInteriorEnterComplete={interiorEnterComplete}
+        onInteriorExitComplete={interiorExitComplete}
+      />
       <div className="visual-vignette" aria-hidden="true" />
       <Header exploreActive={exploreActive} />
       <main className="story-root" data-story-root inert={exploreActive}>
@@ -96,9 +143,8 @@ export function App() {
         <StorySection id="rear-seat-detail" index="11" eyebrow="A closer look" heading="Second Row" body="A lower camera pass reveals both sculpted rear cushions, their individual bolsters and the shared center console." align="right" />
         <StorySection id="hero" index="12" eyebrow="NORKA R35" heading="Engineered Beyond Limits" body="A sculpted performance machine built around speed, precision and uncompromising presence." ctaLabel="Return to the beginning" ctaHref="#explore"><Attribution model={modelAttribution} /></StorySection>
       </main>
-      <ExploreOverlay phase={phase} onExit={exitExplore} />
+      <ExploreOverlay phase={phase} viewPhase={viewPhase} onExit={exitExplore} onExitInterior={exitInterior} />
       <LoadingScreen sceneReady={modelReady} failed={webglFailed} reducedMotion={reducedMotion} />
-      <span className="sr-only" aria-live="polite">{phase === 'explore' ? 'Interactive 3D controls enabled.' : ''}</span>
       {CameraDebugHUD ? <Suspense fallback={null}><CameraDebugHUD /></Suspense> : null}
     </div>
   );

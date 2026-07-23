@@ -7,18 +7,23 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { CameraRig } from './CameraRig';
 import { CarModel, releaseKTX2Loader, type ModelReadyDetails } from './CarModel';
 import { readDeviceProfile, type DeviceProfile } from './deviceProfile';
-import type { ExplorePhase } from './experienceTypes';
+import { isExteriorOrbitEnabled, isInteriorOrbitEnabled, isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { Lighting } from './Lighting';
 import { getShotSet, INITIAL_STORY_SHOT } from './cameraShots';
+import { createVehicleInteractionRig } from './VehicleInteractionRig';
 
 interface Props {
   readonly modelReady: boolean;
   readonly phase: ExplorePhase;
+  readonly viewPhase: ExploreViewPhase;
   readonly reducedMotion: boolean;
   readonly onModelReady: (details: ModelReadyDetails) => void;
   readonly onWebGLFailure: () => void;
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
+  readonly onEnterInterior: () => void;
+  readonly onInteriorEnterComplete: () => void;
+  readonly onInteriorExitComplete: () => void;
 }
 const KTX2_RELEASE_TIMERS = new WeakMap<THREE.WebGLRenderer, number>();
 function profilesEqual(left: DeviceProfile, right: DeviceProfile): boolean {
@@ -119,16 +124,21 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
   public override render(): ReactNode { return this.state.failed ? <WebGLFallback onFailure={this.props.onFailure} /> : this.props.children; }
 }
 
-function WebGLCarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete }: Props) {
+function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onEnterInterior, onInteriorEnterComplete, onInteriorExitComplete }: Props) {
   const profile = useProfile();
   const [gpuConstrained, setGpuConstrained] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const interactionRig = useMemo(createVehicleInteractionRig, []);
   const shot = useMemo(() => getShotSet(profile.compact, profile.landscape)[INITIAL_STORY_SHOT], [profile.compact, profile.landscape]);
-  const interactive = phase === 'explore';
+  const exteriorOrbit = isExteriorOrbitEnabled(phase, viewPhase);
+  const interiorOrbit = isInteriorOrbitEnabled(phase, viewPhase);
+  const interactive = isStableExploreView(phase, viewPhase);
   useEffect(() => {
     if (!interactive) return;
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && target.closest('button,a,input,select,textarea,[contenteditable="true"]')) return;
       const controls = controlsRef.current;
       if (!controls) return;
       const angleStep = event.shiftKey ? 0.18 : 0.1;
@@ -137,17 +147,20 @@ function WebGLCarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebG
         case 'ArrowRight': controls.setAzimuthalAngle(controls.getAzimuthalAngle() + angleStep); break;
         case 'ArrowUp': controls.setPolarAngle(controls.getPolarAngle() - angleStep); break;
         case 'ArrowDown': controls.setPolarAngle(controls.getPolarAngle() + angleStep); break;
-        case '+': case '=': controls.dollyIn(); break;
-        case '-': case '_': controls.dollyOut(); break;
+        case '+': case '=': if (exteriorOrbit) controls.dollyIn(); break;
+        case '-': case '_': if (exteriorOrbit) controls.dollyOut(); break;
         default: return;
       }
       event.preventDefault();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [interactive]);
+  }, [exteriorOrbit, interactive]);
+  const canvasLabel = interiorOrbit
+    ? 'Interactive vehicle cockpit. Use arrow keys or drag to look around.'
+    : 'Interactive 3D vehicle viewer. Use arrow keys to orbit and plus or minus to zoom.';
   return (
-    <div className={`canvas-shell${interactive ? ' is-interactive' : ''}`} aria-hidden={!interactive} aria-label={interactive ? 'Interactive 3D vehicle viewer. Use arrow keys to orbit and plus or minus to zoom.' : undefined} role={interactive ? 'region' : undefined} tabIndex={interactive ? 0 : -1}>
+    <div className={`canvas-shell${interactive ? ' is-interactive' : ''}`} aria-hidden={!interactive} aria-label={interactive ? canvasLabel : undefined} role={interactive ? 'region' : undefined} tabIndex={interactive ? 0 : -1}>
       <CanvasBoundary onFailure={onWebGLFailure}>
         <Canvas
           dpr={gpuConstrained ? Math.min(profile.dpr, 1.5) : profile.dpr}
@@ -169,7 +182,20 @@ function WebGLCarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebG
           <color attach="background" args={['#e8edf2']} />
           <VisibilityController />
           <KTX2Lifecycle />
-          <CameraRig controlsRef={controlsRef} compact={profile.compact} landscape={profile.landscape} modelReady={modelReady} phase={phase} reducedMotion={reducedMotion} onEnterComplete={onEnterComplete} onExitComplete={onExitComplete} />
+          <CameraRig
+            controlsRef={controlsRef}
+            compact={profile.compact}
+            landscape={profile.landscape}
+            modelReady={modelReady}
+            phase={phase}
+            viewPhase={viewPhase}
+            interactionRig={interactionRig}
+            reducedMotion={reducedMotion}
+            onEnterComplete={onEnterComplete}
+            onExitComplete={onExitComplete}
+            onInteriorEnterComplete={onInteriorEnterComplete}
+            onInteriorExitComplete={onInteriorExitComplete}
+          />
           <Suspense fallback={null}>
             <Lighting
               mobileOptimized={profile.modelTier !== 'desktop'}
@@ -177,11 +203,31 @@ function WebGLCarCanvas({ modelReady, phase, reducedMotion, onModelReady, onWebG
             />
             <CarModel
               anisotropy={gpuConstrained ? Math.min(profile.anisotropy, 4) : profile.anisotropy}
+              interactionRig={interactionRig}
               modelTier={profile.modelTier}
+              phase={phase}
+              viewPhase={viewPhase}
+              onEnterInterior={onEnterInterior}
               onReady={onModelReady}
             />
           </Suspense>
-          <OrbitControls ref={controlsRef} enabled={interactive} enableDamping dampingFactor={0.075} enablePan={false} enableZoom enableRotate minDistance={profile.isMobile ? 4.4 : 3.4} maxDistance={profile.isMobile ? 13.5 : 10.5} minPolarAngle={0.34} maxPolarAngle={Math.PI * 0.49} rotateSpeed={0.58} zoomSpeed={0.72} />
+          <OrbitControls
+            ref={controlsRef}
+            enabled={interactive}
+            enableDamping
+            dampingFactor={0.075}
+            enablePan={false}
+            enableZoom={exteriorOrbit}
+            enableRotate
+            minDistance={interiorOrbit ? 0.45 : profile.isMobile ? 4.4 : 3.4}
+            maxDistance={interiorOrbit ? 1.2 : profile.isMobile ? 13.5 : 10.5}
+            minPolarAngle={interiorOrbit ? 0.82 : 0.34}
+            maxPolarAngle={interiorOrbit ? 1.68 : Math.PI * 0.49}
+            minAzimuthAngle={interiorOrbit ? 2.48 : -Infinity}
+            maxAzimuthAngle={interiorOrbit ? 3.13 : Infinity}
+            rotateSpeed={interiorOrbit ? 0.42 : 0.58}
+            zoomSpeed={0.72}
+          />
         </Canvas>
       </CanvasBoundary>
     </div>

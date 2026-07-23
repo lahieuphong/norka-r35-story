@@ -164,14 +164,50 @@ async function optimizeMobileGeometry(document) {
     propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH],
   }));
   isolateTransparentMeshInstances(document);
+  await document.transform(instance({ min: 2 }));
+  const protectedDoorNodes = detachDriverDoorNodes(document);
   await document.transform(
-    instance({ min: 2 }),
-    flatten(),
+    // Cleanup stays deferred until the protected subtrees are reattached;
+    // otherwise the intermediate orphan nodes would be pruned.
+    flatten({ cleanup: false }),
     join({
+      cleanup: false,
       filter: (node) => node.getMesh()?.listPrimitives()
         .every((primitive) => primitive.getMaterial()?.getAlphaMode() === 'OPAQUE') ?? false,
     }),
   );
+  restoreDriverDoorNodes(document, protectedDoorNodes);
+  // `cleanup:false` above intentionally retains orphaned pre-join resources
+  // until the door is safely reattached. They can now be discarded before
+  // quantization inspects every remaining primitive.
+  await document.transform(prune({ keepAttributes: true, keepIndices: true, keepLeaves: false }));
+}
+
+const protectedDriverDoorNodeNames = ['DOOR_INT_L_158', 'DOOR_INT_L_anim_160'];
+
+function detachDriverDoorNodes(document) {
+  const root = document.getRoot();
+  return protectedDriverDoorNodeNames.map((name) => {
+    const node = root.listNodes().find((candidate) => candidate.getName() === name);
+    const parent = node?.getParentNode();
+    if (!node || !parent) throw new Error(`The source model is missing protected driver-door node ${name}.`);
+    const worldMatrix = [...node.getWorldMatrix()];
+    parent.removeChild(node);
+    return { node, worldMatrix };
+  });
+}
+
+function restoreDriverDoorNodes(document, protectedNodes) {
+  const scene = document.getRoot().listScenes()[0];
+  if (!scene) throw new Error('The source model is missing its primary scene.');
+  for (const { node, worldMatrix } of protectedNodes) {
+    // Mobile flatten/join is intentionally run while these two subtrees are
+    // detached. Reattaching with their previous world matrices preserves the
+    // exact authored inner door, while still allowing every other static mesh
+    // to use the low-draw-call mobile pipeline.
+    node.setMatrix(worldMatrix);
+    scene.addChild(node);
+  }
 }
 
 async function prepareFallbackTextures(document) {

@@ -46,6 +46,7 @@ async function readMetrics(file) {
     bytes: (await stat(file)).size,
     extensions,
     materialNames,
+    nodeNames: new Set(root.listNodes().map((node) => node.getName())),
     primitiveDefinitions,
     renderVertices: report.scenes.properties[0]?.renderVertexCount ?? 0,
     textureSizes,
@@ -83,8 +84,10 @@ for (const [variant, file] of Object.entries(files).slice(1)) {
   assert.deepEqual(metrics.materialNames, original.materialNames, `${variant}: material names changed`);
   assert.deepEqual(metrics.alphaModes, original.alphaModes, `${variant}: alpha modes changed`);
   assert.equal(metrics.textures, 50, `${variant}: optimized texture set changed`);
-  assert.ok(metrics.primitiveDefinitions <= 80, `${variant}: draw-call reduction regressed`);
+  assert.ok(metrics.primitiveDefinitions <= 100, `${variant}: draw-call reduction regressed`);
   assert.ok(metrics.extensions.has('EXT_mesh_gpu_instancing'), `${variant}: instancing extension missing`);
+  assert.ok(metrics.nodeNames.has('DOOR_INT_L_158'), `${variant}: protected driver-door interior missing`);
+  assert.ok(metrics.nodeNames.has('DOOR_INT_L_anim_160'), `${variant}: protected driver-door actuator missing`);
   assertBoundsClose(metrics.bounds, original.bounds, variant);
 }
 

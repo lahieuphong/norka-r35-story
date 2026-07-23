@@ -127,15 +127,31 @@
 .loading-screen.is-complete .loading-screen__foot { transform: translate3d(0,1.25rem,0); }
 .explore-overlay { position: fixed; z-index: 45; inset: 0; pointer-events: none; }
 .explore-overlay__status { position: absolute; left: max(var(--page-pad),calc(env(safe-area-inset-left) + .5rem)); bottom: max(2rem,calc(env(safe-area-inset-bottom) + .5rem)); display: flex; align-items: center; gap: .65rem; padding: .65rem .8rem; border: 1px solid rgba(11,34,54,.12); border-radius: 999px; background: rgba(244,247,250,.82); color: rgba(11,24,38,.68); font-size: .68rem; font-weight: 650; letter-spacing: .13em; text-transform: uppercase; backdrop-filter: blur(10px); }
+.explore-overlay__status:focus { outline: none; }
 .explore-overlay__dot { width: .42rem; height: .42rem; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 .3rem var(--accent-soft); }
 .explore-overlay__reticle { position: absolute; top: 50%; left: 50%; width: 2.2rem; height: 2.2rem; opacity: 0; transform: translate(-50%,-50%); transition: opacity 300ms ease; }
 .explore-overlay.is-ready .explore-overlay__reticle { opacity: .28; }
+.explore-overlay.is-interior .explore-overlay__reticle { opacity: .12; }
+.explore-overlay.is-transitioning-interior .explore-overlay__reticle { opacity: 0; }
 .explore-overlay__reticle span { position: absolute; top: 50%; left: 50%; background: #0b1826; transform: translate(-50%,-50%); }
 .explore-overlay__reticle span:first-child { width: 100%; height: 1px; }
 .explore-overlay__reticle span:last-child { width: 1px; height: 100%; }
 .explore-overlay__exit { position: absolute; top: max(1.45rem,calc(env(safe-area-inset-top) + .5rem)); right: max(var(--page-pad),calc(env(safe-area-inset-right) + .5rem)); display: inline-flex; align-items: center; gap: .9rem; min-height: 2.75rem; padding: .78rem 1rem; border: 1px solid rgba(11,34,54,.22); background: rgba(11,24,38,.84); color: #fff; font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; pointer-events: auto; backdrop-filter: blur(10px); }
 .explore-overlay__exit:disabled { opacity: .45; cursor: progress; }
 .explore-overlay__exit span:last-child { font-size: 1.2rem; line-height: .8; }
+.door-hotspot-anchor { pointer-events: none !important; }
+.door-hotspot-wrap { opacity: 0; pointer-events: none; transform: scale(.78); transform-origin: center; transition: opacity 180ms ease,transform 260ms cubic-bezier(.22,1,.36,1); }
+.door-hotspot-wrap[data-visible="true"] { opacity: 1; transform: scale(1); }
+.door-hotspot { position: relative; display: grid; place-items: center; width: 3.5rem; height: 3.5rem; padding: 0; border: 0; border-radius: 50%; background: rgba(237,244,249,.2); color: #fff; cursor: pointer; pointer-events: auto; touch-action: manipulation; -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 .35rem .7rem rgba(3,20,34,.28)); }
+.door-hotspot:disabled { cursor: default; pointer-events: none; }
+.door-hotspot__ring { position: relative; display: grid; place-items: center; width: 2.35rem; height: 2.35rem; border: 1px solid rgba(255,255,255,.96); border-radius: 50%; background: rgba(6,102,166,.66); box-shadow: 0 0 0 .36rem rgba(255,255,255,.22),0 0 0 .45rem rgba(6,102,166,.36); backdrop-filter: blur(6px); }
+.door-hotspot__ring::before,.door-hotspot__ring::after { position: absolute; inset: -.38rem; border: 1px solid rgba(255,255,255,.58); border-radius: inherit; content: ""; animation: door-hotspot-pulse 2s cubic-bezier(.22,.61,.36,1) 3; }
+.door-hotspot__ring::after { animation-delay: 1s; }
+.door-hotspot__ring > span { width: .48rem; height: .48rem; border: 1px solid #fff; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .2rem rgba(6,102,166,.62); }
+.door-hotspot__label { position: absolute; top: 50%; left: calc(100% + .32rem); padding: .5rem .62rem; border: 1px solid rgba(255,255,255,.52); border-radius: 999px; background: rgba(11,24,38,.76); color: #fff; font-size: .58rem; font-weight: 750; letter-spacing: .11em; line-height: 1; text-transform: uppercase; white-space: nowrap; transform: translateY(-50%); backdrop-filter: blur(8px); }
+.door-hotspot-wrap[data-label-side="left"] .door-hotspot__label { right: calc(100% + .32rem); left: auto; }
+.door-hotspot:is(:hover,:focus-visible) .door-hotspot__ring { background: rgba(6,117,185,.9); box-shadow: 0 0 0 .4rem rgba(255,255,255,.28),0 0 0 .52rem rgba(6,102,166,.48); }
+@keyframes door-hotspot-pulse { 0% { opacity: .72; transform: scale(.82); } 70%,100% { opacity: 0; transform: scale(1.38); } }
 .webgl-fallback { position: fixed; z-index: 80; inset: 0; display: grid; place-content: center; padding: 2rem; background: var(--bg); color: var(--text); text-align: center; }
 .webgl-fallback h2 { margin: .5rem 0 1rem; font-size: clamp(2rem,5vw,4rem); }
 .webgl-fallback p { max-width: 34rem; margin: 0 auto; color: var(--muted); line-height: 1.6; }
@@ -151,6 +167,14 @@
   .loading-screen__number { text-shadow: none; }
   .loading-screen__track span { box-shadow: none; }
   .loading-screen.is-complete .loading-screen__center { filter: none; }
+  .door-hotspot { width: 3.75rem; height: 3.75rem; }
+  .door-hotspot__ring { width: 2.45rem; height: 2.45rem; }
+  .door-hotspot__label { left: calc(100% + .18rem); font-size: .65rem; }
+  .door-hotspot-wrap[data-label-side="left"] .door-hotspot__label { right: calc(100% + .18rem); left: auto; }
+}
+@media (max-width: 380px) {
+  .explore-overlay__exit { gap: .45rem; min-height: 2.55rem; padding: .68rem .72rem; font-size: .6rem; letter-spacing: .08em; }
+  .explore-overlay__exit span:last-child { font-size: 1rem; }
 }
 @media (max-width: 1024px) and (orientation: portrait) {
   :root { --page-pad: 1.2rem; }
@@ -214,6 +238,7 @@
 @media (forced-colors: active) {
   .site-header nav a:hover,.site-header nav a.is-active { background: none; color: LinkText; -webkit-text-fill-color: currentColor; }
   :is(#hero,#performance,#aerodynamics,#rear-signature,#precision,#explore) h1 { background: none; color: CanvasText; -webkit-text-fill-color: CanvasText; -webkit-text-stroke: 0; text-shadow: none; }
+  .door-hotspot,.door-hotspot__ring,.door-hotspot__label { border: 1px solid ButtonText; background: ButtonFace; color: ButtonText; forced-color-adjust: auto; }
 }
 @media (max-width: 480px) and (max-height: 650px) and (orientation: portrait) {
   .story-section { padding-bottom: max(3rem,calc(env(safe-area-inset-bottom) + 2rem)); }
