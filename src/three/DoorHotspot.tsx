@@ -93,7 +93,7 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
             ref={buttonRef}
             type="button"
             className="door-hotspot"
-            aria-label="Open the driver door and enter the cockpit"
+            aria-label="Open the driver door"
             data-door-hotspot
             disabled={!interactive}
             onPointerDown={(event) => event.stopPropagation()}
@@ -101,7 +101,7 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
             onClick={(event) => { event.stopPropagation(); event.currentTarget.blur(); onActivate(); }}
           >
             <span className="door-hotspot__ring" aria-hidden="true"><span /></span>
-            <span ref={labelRef} className="door-hotspot__label">Open · Enter</span>
+            <span ref={labelRef} className="door-hotspot__label">Open</span>
           </button>
         </div>
       </Html>

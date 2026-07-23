@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { useScrollStory, type CameraRigValues } from '../hooks/useScrollStory';
 import { getShotSet, getWaypointSet, INITIAL_STORY_SHOT } from './cameraShots';
-import type { ExplorePhase, ExploreViewPhase } from './experienceTypes';
+import { isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { getInteriorTransitionSet } from './interiorTransitionShots';
 import { cameraDebugSnapshot, storyVisualState } from './storyState';
 import type { VehicleInteractionRig } from './VehicleInteractionRig';
@@ -21,8 +21,13 @@ interface Props {
   readonly reducedMotion: boolean;
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
+  readonly onExteriorDoorOpenComplete: () => void;
   readonly onInteriorEnterComplete: () => void;
+  readonly onInteriorDoorOpenComplete: () => void;
+  readonly onInteriorDoorCloseComplete: () => void;
+  readonly onInteriorExitDoorOpenComplete: () => void;
   readonly onInteriorExitComplete: () => void;
+  readonly onExteriorDoorCloseComplete: () => void;
 }
 
 interface CameraSnapshot {
@@ -30,6 +35,19 @@ interface CameraSnapshot {
   readonly target: THREE.Vector3;
   readonly fov: number;
 }
+
+const DOOR_OPEN_DURATION = 1.05;
+const DOOR_CLOSE_DURATION = 1.45;
+const ENTRY_APPROACH_DURATION = 1.25;
+const ENTRY_DOORWAY_DURATION = 1.1;
+const ENTRY_COCKPIT_DURATION = 1.65;
+const ENTRY_DOORWAY_START = ENTRY_APPROACH_DURATION - 0.1;
+const ENTRY_COCKPIT_START = ENTRY_DOORWAY_START + ENTRY_DOORWAY_DURATION - 0.1;
+const EXIT_DOORWAY_DURATION = 1.25;
+const EXIT_APPROACH_DURATION = 1.05;
+const EXIT_DESTINATION_DURATION = 1.4;
+const EXIT_APPROACH_START = EXIT_DOORWAY_DURATION - 0.08;
+const EXIT_DESTINATION_START = EXIT_APPROACH_START + EXIT_APPROACH_DURATION - 0.08;
 
 export function CameraRig({
   controlsRef,
@@ -42,8 +60,13 @@ export function CameraRig({
   reducedMotion,
   onEnterComplete,
   onExitComplete,
+  onExteriorDoorOpenComplete,
   onInteriorEnterComplete,
+  onInteriorDoorOpenComplete,
+  onInteriorDoorCloseComplete,
+  onInteriorExitDoorOpenComplete,
   onInteriorExitComplete,
+  onExteriorDoorCloseComplete,
 }: Props) {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
@@ -83,6 +106,30 @@ export function CameraRig({
         .to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2] }, 0)
         .to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2] }, 0)
         .to(rig, { fov: shot.fov }, 0);
+    } else if (phase === 'explore' && (
+      viewPhase === 'openingExteriorDoor'
+      || viewPhase === 'openingInteriorDoor'
+      || viewPhase === 'openingDoorForExit'
+    )) {
+      const controls = controlsRef.current;
+      rig.position.copy(camera.position);
+      if (controls) rig.target.copy(controls.target);
+      if (camera instanceof THREE.PerspectiveCamera) rig.fov = camera.fov;
+      interactionRig.glassOpacity = 1;
+      const duration = reducedMotion ? 0.01 : DOOR_OPEN_DURATION;
+      activeTween.current = gsap.timeline({
+        defaults: { ease: 'power2.inOut', overwrite: true },
+        onUpdate: invalidate,
+        onComplete: () => {
+          interactionRig.doorProgress = 1;
+          const currentControls = controlsRef.current;
+          if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
+          if (viewPhase === 'openingExteriorDoor') onExteriorDoorOpenComplete();
+          else if (viewPhase === 'openingInteriorDoor') onInteriorDoorOpenComplete();
+          else onInteriorExitDoorOpenComplete();
+        },
+      })
+        .to(interactionRig, { doorProgress: 1, duration }, 0);
     } else if (phase === 'explore' && viewPhase === 'enteringInterior') {
       const controls = controlsRef.current;
       rig.position.copy(camera.position);
@@ -100,7 +147,7 @@ export function CameraRig({
       const doorway = interiorShots.doorway;
       const cockpit = interiorShots.cockpit;
       activeTween.current = gsap.timeline({
-        defaults: { ease: 'power3.inOut', overwrite: true },
+        defaults: { ease: 'power2.inOut', overwrite: true },
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.doorProgress = 1;
@@ -110,18 +157,37 @@ export function CameraRig({
           onInteriorEnterComplete();
         },
       })
-        .to(interactionRig, { doorProgress: 1, duration: quick(0.72) }, 0)
-        .to(rig.position, { x: approach.position[0], y: approach.position[1], z: approach.position[2], duration: quick(0.62) }, 0)
-        .to(rig.target, { x: approach.target[0], y: approach.target[1], z: approach.target[2], duration: quick(0.62) }, 0)
-        .to(rig, { fov: approach.fov, duration: quick(0.62) }, 0)
-        .to(interactionRig, { glassOpacity: 0.24, duration: quick(0.28) }, quick(0.55))
-        .to(rig.position, { x: doorway.position[0], y: doorway.position[1], z: doorway.position[2], duration: quick(0.56) }, quick(0.62))
-        .to(rig.target, { x: doorway.target[0], y: doorway.target[1], z: doorway.target[2], duration: quick(0.56) }, quick(0.62))
-        .to(rig, { fov: doorway.fov, duration: quick(0.56) }, quick(0.62))
-        .to(rig.position, { x: cockpit.position[0], y: cockpit.position[1], z: cockpit.position[2], duration: quick(0.88) }, quick(1.06))
-        .to(rig.target, { x: cockpit.target[0], y: cockpit.target[1], z: cockpit.target[2], duration: quick(0.88) }, quick(1.06))
-        .to(rig, { fov: cockpit.fov, duration: quick(0.88) }, quick(1.06))
-        .to(interactionRig, { glassOpacity: 1, duration: quick(0.4) }, quick(1.36));
+        .to(rig.position, { x: approach.position[0], y: approach.position[1], z: approach.position[2], duration: quick(ENTRY_APPROACH_DURATION) }, 0)
+        .to(rig.target, { x: approach.target[0], y: approach.target[1], z: approach.target[2], duration: quick(ENTRY_APPROACH_DURATION) }, 0)
+        .to(rig, { fov: approach.fov, duration: quick(ENTRY_APPROACH_DURATION) }, 0)
+        .to(interactionRig, { glassOpacity: 0.24, duration: quick(0.4) }, quick(ENTRY_DOORWAY_START - 0.25))
+        .to(rig.position, { x: doorway.position[0], y: doorway.position[1], z: doorway.position[2], duration: quick(ENTRY_DOORWAY_DURATION) }, quick(ENTRY_DOORWAY_START))
+        .to(rig.target, { x: doorway.target[0], y: doorway.target[1], z: doorway.target[2], duration: quick(ENTRY_DOORWAY_DURATION) }, quick(ENTRY_DOORWAY_START))
+        .to(rig, { fov: doorway.fov, duration: quick(ENTRY_DOORWAY_DURATION) }, quick(ENTRY_DOORWAY_START))
+        .to(rig.position, { x: cockpit.position[0], y: cockpit.position[1], z: cockpit.position[2], duration: quick(ENTRY_COCKPIT_DURATION) }, quick(ENTRY_COCKPIT_START))
+        .to(rig.target, { x: cockpit.target[0], y: cockpit.target[1], z: cockpit.target[2], duration: quick(ENTRY_COCKPIT_DURATION) }, quick(ENTRY_COCKPIT_START))
+        .to(rig, { fov: cockpit.fov, duration: quick(ENTRY_COCKPIT_DURATION) }, quick(ENTRY_COCKPIT_START))
+        .to(interactionRig, { glassOpacity: 1, duration: quick(0.65) }, quick(ENTRY_COCKPIT_START + 0.3));
+    } else if (phase === 'explore' && (viewPhase === 'closingInteriorDoor' || viewPhase === 'closingExteriorDoor')) {
+      const controls = controlsRef.current;
+      rig.position.copy(camera.position);
+      if (controls) rig.target.copy(controls.target);
+      if (camera instanceof THREE.PerspectiveCamera) rig.fov = camera.fov;
+      const duration = reducedMotion ? 0.01 : DOOR_CLOSE_DURATION;
+      interactionRig.glassOpacity = 1;
+      activeTween.current = gsap.timeline({
+        defaults: { ease: 'power2.inOut', overwrite: true },
+        onUpdate: invalidate,
+        onComplete: () => {
+          interactionRig.doorProgress = 0;
+          interactionRig.glassOpacity = 1;
+          const currentControls = controlsRef.current;
+          if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
+          if (viewPhase === 'closingInteriorDoor') onInteriorDoorCloseComplete();
+          else onExteriorDoorCloseComplete();
+        },
+      })
+        .to(interactionRig, { doorProgress: 0, duration }, 0);
     } else if (phase === 'explore' && viewPhase === 'exitingInterior') {
       const controls = controlsRef.current;
       const fallbackShot = shots.explore;
@@ -137,10 +203,10 @@ export function CameraRig({
       const doorway = interiorShots.doorway;
       const approach = interiorShots.approach;
       activeTween.current = gsap.timeline({
-        defaults: { ease: 'power3.inOut', overwrite: true },
+        defaults: { ease: 'power2.inOut', overwrite: true },
         onUpdate: invalidate,
         onComplete: () => {
-          interactionRig.doorProgress = 0;
+          interactionRig.doorProgress = 1;
           interactionRig.glassOpacity = 1;
           const currentControls = controlsRef.current;
           if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
@@ -148,25 +214,24 @@ export function CameraRig({
           onInteriorExitComplete();
         },
       })
-        .to(interactionRig, { glassOpacity: 0.24, duration: quick(0.28) }, quick(0.26))
-        .to(rig.position, { x: doorway.position[0], y: doorway.position[1], z: doorway.position[2], duration: quick(0.7) }, 0)
-        .to(rig.target, { x: doorway.target[0], y: doorway.target[1], z: doorway.target[2], duration: quick(0.7) }, 0)
-        .to(rig, { fov: doorway.fov, duration: quick(0.7) }, 0)
-        .to(rig.position, { x: approach.position[0], y: approach.position[1], z: approach.position[2], duration: quick(0.58) }, quick(0.62))
-        .to(rig.target, { x: approach.target[0], y: approach.target[1], z: approach.target[2], duration: quick(0.58) }, quick(0.62))
-        .to(rig, { fov: approach.fov, duration: quick(0.58) }, quick(0.62))
-        .to(rig.position, { x: destination.position.x, y: destination.position.y, z: destination.position.z, duration: quick(0.76) }, quick(1.1))
-        .to(rig.target, { x: destination.target.x, y: destination.target.y, z: destination.target.z, duration: quick(0.76) }, quick(1.1))
-        .to(rig, { fov: destination.fov, duration: quick(0.76) }, quick(1.1))
-        .to(interactionRig, { doorProgress: 0, duration: quick(0.7) }, quick(1.12))
-        .to(interactionRig, { glassOpacity: 1, duration: quick(0.36) }, quick(1.42));
+        .to(interactionRig, { glassOpacity: 0.24, duration: quick(0.45) }, quick(0.15))
+        .to(rig.position, { x: doorway.position[0], y: doorway.position[1], z: doorway.position[2], duration: quick(EXIT_DOORWAY_DURATION) }, 0)
+        .to(rig.target, { x: doorway.target[0], y: doorway.target[1], z: doorway.target[2], duration: quick(EXIT_DOORWAY_DURATION) }, 0)
+        .to(rig, { fov: doorway.fov, duration: quick(EXIT_DOORWAY_DURATION) }, 0)
+        .to(rig.position, { x: approach.position[0], y: approach.position[1], z: approach.position[2], duration: quick(EXIT_APPROACH_DURATION) }, quick(EXIT_APPROACH_START))
+        .to(rig.target, { x: approach.target[0], y: approach.target[1], z: approach.target[2], duration: quick(EXIT_APPROACH_DURATION) }, quick(EXIT_APPROACH_START))
+        .to(rig, { fov: approach.fov, duration: quick(EXIT_APPROACH_DURATION) }, quick(EXIT_APPROACH_START))
+        .to(rig.position, { x: destination.position.x, y: destination.position.y, z: destination.position.z, duration: quick(EXIT_DESTINATION_DURATION) }, quick(EXIT_DESTINATION_START))
+        .to(rig.target, { x: destination.target.x, y: destination.target.y, z: destination.target.z, duration: quick(EXIT_DESTINATION_DURATION) }, quick(EXIT_DESTINATION_START))
+        .to(rig, { fov: destination.fov, duration: quick(EXIT_DESTINATION_DURATION) }, quick(EXIT_DESTINATION_START))
+        .to(interactionRig, { glassOpacity: 1, duration: quick(0.7) }, quick(EXIT_DESTINATION_START + 0.45));
     } else if (phase === 'story') {
       exteriorSnapshot.current = null;
       interactionRig.doorProgress = 0;
       interactionRig.glassOpacity = 1;
     }
     return () => { activeTween.current?.kill(); activeTween.current = null; };
-  }, [camera, controlsRef, interactionRig, interiorShots, invalidate, onEnterComplete, onExitComplete, onInteriorEnterComplete, onInteriorExitComplete, phase, reducedMotion, rig, shots, viewPhase]);
+  }, [camera, controlsRef, interactionRig, interiorShots, invalidate, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, reducedMotion, rig, shots, viewPhase]);
 
   useEffect(() => () => {
     interactionRig.doorProgress = 0;
@@ -175,7 +240,7 @@ export function CameraRig({
 
   useFrame(() => {
     const controls = controlsRef.current;
-    const userControlled = phase === 'explore' && (viewPhase === 'exterior' || viewPhase === 'interior');
+    const userControlled = isStableExploreView(phase, viewPhase);
     if (!userControlled) {
       camera.position.copy(rig.position);
       camera.lookAt(rig.target);

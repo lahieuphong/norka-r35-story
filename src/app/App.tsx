@@ -78,23 +78,73 @@ export function App() {
     phaseRef.current = 'exiting';
     setPhase('exiting');
   }, []);
-  const enterInterior = useCallback((): void => {
+  const openExteriorDoor = useCallback((): void => {
     if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+    viewPhaseRef.current = 'openingExteriorDoor';
+    setViewPhase('openingExteriorDoor');
+  }, []);
+  const exteriorDoorOpenComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'openingExteriorDoor') return;
+    viewPhaseRef.current = 'exteriorDoorOpen';
+    setViewPhase('exteriorDoorOpen');
+  }, []);
+  const enterInterior = useCallback((): void => {
+    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exteriorDoorOpen') return;
     viewPhaseRef.current = 'enteringInterior';
     setViewPhase('enteringInterior');
   }, []);
   const interiorEnterComplete = useCallback((): void => {
     if (viewPhaseRef.current !== 'enteringInterior') return;
+    viewPhaseRef.current = 'interiorDoorOpen';
+    setViewPhase('interiorDoorOpen');
+  }, []);
+  const closeInteriorDoor = useCallback((): void => {
+    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'interiorDoorOpen') return;
+    viewPhaseRef.current = 'closingInteriorDoor';
+    setViewPhase('closingInteriorDoor');
+  }, []);
+  const interiorDoorCloseComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'closingInteriorDoor') return;
     viewPhaseRef.current = 'interior';
     setViewPhase('interior');
   }, []);
-  const exitInterior = useCallback((): void => {
+  const openInteriorDoor = useCallback((): void => {
     if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'interior') return;
+    viewPhaseRef.current = 'openingInteriorDoor';
+    setViewPhase('openingInteriorDoor');
+  }, []);
+  const interiorDoorOpenComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'openingInteriorDoor') return;
+    viewPhaseRef.current = 'interiorDoorOpen';
+    setViewPhase('interiorDoorOpen');
+  }, []);
+  const exitInterior = useCallback((): void => {
+    if (phaseRef.current !== 'explore') return;
+    if (viewPhaseRef.current === 'interior') {
+      viewPhaseRef.current = 'openingDoorForExit';
+      setViewPhase('openingDoorForExit');
+    } else if (viewPhaseRef.current === 'interiorDoorOpen') {
+      viewPhaseRef.current = 'exitingInterior';
+      setViewPhase('exitingInterior');
+    }
+  }, []);
+  const interiorExitDoorOpenComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'openingDoorForExit') return;
     viewPhaseRef.current = 'exitingInterior';
     setViewPhase('exitingInterior');
   }, []);
   const interiorExitComplete = useCallback((): void => {
     if (viewPhaseRef.current !== 'exitingInterior') return;
+    viewPhaseRef.current = 'exteriorDoorOpenAfterExit';
+    setViewPhase('exteriorDoorOpenAfterExit');
+  }, []);
+  const closeExteriorDoor = useCallback((): void => {
+    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exteriorDoorOpenAfterExit') return;
+    viewPhaseRef.current = 'closingExteriorDoor';
+    setViewPhase('closingExteriorDoor');
+  }, []);
+  const exteriorDoorCloseComplete = useCallback((): void => {
+    if (viewPhaseRef.current !== 'closingExteriorDoor') return;
     viewPhaseRef.current = 'exterior';
     setViewPhase('exterior');
   }, []);
@@ -123,9 +173,14 @@ export function App() {
         onWebGLFailure={onWebGLFailure}
         onEnterComplete={enterComplete}
         onExitComplete={exitComplete}
-        onEnterInterior={enterInterior}
+        onOpenExteriorDoor={openExteriorDoor}
+        onExteriorDoorOpenComplete={exteriorDoorOpenComplete}
         onInteriorEnterComplete={interiorEnterComplete}
+        onInteriorDoorOpenComplete={interiorDoorOpenComplete}
+        onInteriorDoorCloseComplete={interiorDoorCloseComplete}
+        onInteriorExitDoorOpenComplete={interiorExitDoorOpenComplete}
         onInteriorExitComplete={interiorExitComplete}
+        onExteriorDoorCloseComplete={exteriorDoorCloseComplete}
       />
       <div className="visual-vignette" aria-hidden="true" />
       <Header exploreActive={exploreActive} />
@@ -143,7 +198,16 @@ export function App() {
         <StorySection id="rear-seat-detail" index="11" eyebrow="A closer look" heading="Second Row" body="A lower camera pass reveals both sculpted rear cushions, their individual bolsters and the shared center console." align="right" />
         <StorySection id="hero" index="12" eyebrow="NORKA R35" heading="Engineered Beyond Limits" body="A sculpted performance machine built around speed, precision and uncompromising presence." ctaLabel="Return to the beginning" ctaHref="#explore"><Attribution model={modelAttribution} /></StorySection>
       </main>
-      <ExploreOverlay phase={phase} viewPhase={viewPhase} onExit={exitExplore} onExitInterior={exitInterior} />
+      <ExploreOverlay
+        phase={phase}
+        viewPhase={viewPhase}
+        onExit={exitExplore}
+        onEnterInterior={enterInterior}
+        onOpenInteriorDoor={openInteriorDoor}
+        onCloseInteriorDoor={closeInteriorDoor}
+        onExitInterior={exitInterior}
+        onCloseExteriorDoor={closeExteriorDoor}
+      />
       <LoadingScreen sceneReady={modelReady} failed={webglFailed} reducedMotion={reducedMotion} />
       {CameraDebugHUD ? <Suspense fallback={null}><CameraDebugHUD /></Suspense> : null}
     </div>

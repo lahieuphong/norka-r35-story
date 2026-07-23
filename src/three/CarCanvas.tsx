@@ -21,9 +21,14 @@ interface Props {
   readonly onWebGLFailure: () => void;
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
-  readonly onEnterInterior: () => void;
+  readonly onOpenExteriorDoor: () => void;
+  readonly onExteriorDoorOpenComplete: () => void;
   readonly onInteriorEnterComplete: () => void;
+  readonly onInteriorDoorOpenComplete: () => void;
+  readonly onInteriorDoorCloseComplete: () => void;
+  readonly onInteriorExitDoorOpenComplete: () => void;
   readonly onInteriorExitComplete: () => void;
+  readonly onExteriorDoorCloseComplete: () => void;
 }
 const KTX2_RELEASE_TIMERS = new WeakMap<THREE.WebGLRenderer, number>();
 function profilesEqual(left: DeviceProfile, right: DeviceProfile): boolean {
@@ -124,7 +129,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
   public override render(): ReactNode { return this.state.failed ? <WebGLFallback onFailure={this.props.onFailure} /> : this.props.children; }
 }
 
-function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onEnterInterior, onInteriorEnterComplete, onInteriorExitComplete }: Props) {
+function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
   const profile = useProfile();
   const [gpuConstrained, setGpuConstrained] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -193,8 +198,13 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
             reducedMotion={reducedMotion}
             onEnterComplete={onEnterComplete}
             onExitComplete={onExitComplete}
+            onExteriorDoorOpenComplete={onExteriorDoorOpenComplete}
             onInteriorEnterComplete={onInteriorEnterComplete}
+            onInteriorDoorOpenComplete={onInteriorDoorOpenComplete}
+            onInteriorDoorCloseComplete={onInteriorDoorCloseComplete}
+            onInteriorExitDoorOpenComplete={onInteriorExitDoorOpenComplete}
             onInteriorExitComplete={onInteriorExitComplete}
+            onExteriorDoorCloseComplete={onExteriorDoorCloseComplete}
           />
           <Suspense fallback={null}>
             <Lighting
@@ -207,7 +217,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
               modelTier={profile.modelTier}
               phase={phase}
               viewPhase={viewPhase}
-              onEnterInterior={onEnterInterior}
+              onOpenExteriorDoor={onOpenExteriorDoor}
               onReady={onModelReady}
             />
           </Suspense>

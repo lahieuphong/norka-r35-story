@@ -63,7 +63,7 @@ interface Props {
   readonly modelTier: ModelTier;
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
-  readonly onEnterInterior: () => void;
+  readonly onOpenExteriorDoor: () => void;
   readonly onReady: (details: ModelReadyDetails) => void;
 }
 
@@ -163,7 +163,7 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPhase, onEnterInterior, onReady }: Props) {
+export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPhase, onOpenExteriorDoor, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
   const modelVariant = useMemo(() => selectRuntimeVariant(renderer, modelTier), [modelTier, renderer]);
   const modelUrl = URLS[modelVariant];
@@ -296,7 +296,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
         available={Boolean(prepared.driverDoor)}
         phase={phase}
         viewPhase={viewPhase}
-        onActivate={onEnterInterior}
+        onActivate={onOpenExteriorDoor}
       />
     </group>
   );

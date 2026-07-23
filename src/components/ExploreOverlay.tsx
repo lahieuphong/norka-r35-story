@@ -5,25 +5,45 @@ interface Props {
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
   readonly onExit: () => void;
+  readonly onEnterInterior: () => void;
+  readonly onOpenInteriorDoor: () => void;
+  readonly onCloseInteriorDoor: () => void;
   readonly onExitInterior: () => void;
+  readonly onCloseExteriorDoor: () => void;
 }
 
 function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase): string {
   if (phase === 'entering') return 'Preparing interactive camera';
   if (phase === 'exiting') return 'Returning to the story';
-  if (viewPhase === 'enteringInterior') return 'Opening driver door · entering cockpit';
-  if (viewPhase === 'exitingInterior') return 'Leaving cockpit · closing driver door';
-  if (viewPhase === 'interior') return 'Drag to look around · use Quit interior to leave';
-  return 'Select the door marker to enter · drag to orbit';
+  if (viewPhase === 'openingExteriorDoor') return 'Opening driver door';
+  if (viewPhase === 'exteriorDoorOpen') return 'Door open · select Enter car when ready';
+  if (viewPhase === 'exteriorDoorOpenAfterExit') return 'Outside the car · close the driver door when ready';
+  if (viewPhase === 'closingExteriorDoor') return 'Closing driver door';
+  if (viewPhase === 'enteringInterior') return 'Entering cockpit';
+  if (viewPhase === 'interiorDoorOpen') return 'Door open · close it or use Quit interior to leave';
+  if (viewPhase === 'closingInteriorDoor') return 'Closing driver door';
+  if (viewPhase === 'openingInteriorDoor') return 'Opening driver door';
+  if (viewPhase === 'openingDoorForExit') return 'Opening driver door before exit';
+  if (viewPhase === 'exitingInterior') return 'Leaving cockpit · driver door remains open';
+  if (viewPhase === 'interior') return 'Open the door again or use Quit interior to leave';
+  return 'Select the door marker to open · drag to orbit';
 }
 
-export function ExploreOverlay({ phase, viewPhase, onExit, onExitInterior }: Props) {
+export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOpenInteriorDoor, onCloseInteriorDoor, onExitInterior, onCloseExteriorDoor }: Props) {
   const actionRef = useRef<HTMLButtonElement>(null);
+  const openDoorRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const previousView = useRef<ExploreViewPhase>(viewPhase);
   const exteriorReady = phase === 'explore' && viewPhase === 'exterior';
+  const exteriorDoorOpenReady = phase === 'explore' && viewPhase === 'exteriorDoorOpen';
+  const exteriorDoorOpenAfterExitReady = phase === 'explore' && viewPhase === 'exteriorDoorOpenAfterExit';
+  const interiorDoorOpenReady = phase === 'explore' && viewPhase === 'interiorDoorOpen';
   const interiorReady = phase === 'explore' && viewPhase === 'interior';
-  const interactive = exteriorReady || interiorReady;
+  const stableInterior = interiorDoorOpenReady || interiorReady;
+  const interactive = exteriorReady
+    || exteriorDoorOpenReady
+    || exteriorDoorOpenAfterExitReady
+    || stableInterior;
 
   useEffect(() => {
     const previous = previousView.current;
@@ -32,11 +52,15 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onExitInterior }: Pro
       statusRef.current?.focus({ preventScroll: true });
       return;
     }
-    if (interiorReady) {
+    if (stableInterior) {
+      openDoorRef.current?.focus();
+      return;
+    }
+    if (exteriorDoorOpenReady || exteriorDoorOpenAfterExitReady) {
       actionRef.current?.focus();
       return;
     }
-    if (previous === 'exitingInterior') {
+    if (previous === 'closingExteriorDoor') {
       let frame = 0;
       let attempts = 0;
       const restoreDoorFocus = (): void => {
@@ -57,40 +81,79 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onExitInterior }: Pro
     } else {
       actionRef.current?.focus();
     }
-  }, [interactive, interiorReady, phase, viewPhase]);
+  }, [exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, interactive, phase, stableInterior, viewPhase]);
 
   useEffect(() => {
     if (!interactive) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape'
+        || exteriorDoorOpenReady
+        || exteriorDoorOpenAfterExitReady
+        || interiorDoorOpenReady) return;
       event.preventDefault();
-      if (interiorReady) onExitInterior();
+      if (stableInterior) onExitInterior();
       else onExit();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [interactive, interiorReady, onExit, onExitInterior]);
+  }, [exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, interactive, interiorDoorOpenReady, onExit, onExitInterior, stableInterior]);
 
   if (phase === 'story') return null;
   const status = readStatus(phase, viewPhase);
-  const transitioningInterior = viewPhase === 'enteringInterior' || viewPhase === 'exitingInterior';
-  const actionLabel = interiorReady ? 'Quit interior'
-    : viewPhase === 'enteringInterior' ? 'Entering cockpit'
-      : viewPhase === 'exitingInterior' ? 'Returning outside'
-        : phase === 'exiting' ? 'Exiting 3D' : 'Exit 3D';
+  const transitioningInterior = viewPhase === 'openingExteriorDoor'
+    || viewPhase === 'enteringInterior'
+    || viewPhase === 'closingInteriorDoor'
+    || viewPhase === 'openingInteriorDoor'
+    || viewPhase === 'openingDoorForExit'
+    || viewPhase === 'exitingInterior'
+    || viewPhase === 'closingExteriorDoor';
+  const insideCabin = interiorDoorOpenReady
+    || interiorReady
+    || viewPhase === 'closingInteriorDoor'
+    || viewPhase === 'openingInteriorDoor'
+    || viewPhase === 'openingDoorForExit'
+    || viewPhase === 'exitingInterior';
+  const actionLabel = exteriorDoorOpenReady ? 'Enter car'
+    : exteriorDoorOpenAfterExitReady ? 'Close door'
+      : viewPhase === 'openingExteriorDoor' ? 'Opening door'
+        : viewPhase === 'enteringInterior' ? 'Entering cockpit'
+          : viewPhase === 'closingInteriorDoor' ? 'Closing door'
+            : viewPhase === 'openingInteriorDoor' || viewPhase === 'openingDoorForExit' ? 'Opening door'
+              : viewPhase === 'exitingInterior' ? 'Returning outside'
+                : viewPhase === 'closingExteriorDoor' ? 'Closing door'
+                  : phase === 'exiting' ? 'Exiting 3D' : 'Exit 3D';
+  const action = exteriorDoorOpenReady ? onEnterInterior
+    : exteriorDoorOpenAfterExitReady ? onCloseExteriorDoor
+      : onExit;
+  const actionIcon = exteriorDoorOpenReady ? '→'
+    : transitioningInterior ? '…'
+      : '×';
   return (
-    <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${interiorReady ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`}>
+    <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`}>
       <div ref={statusRef} className="explore-overlay__status" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}><span className="explore-overlay__dot" aria-hidden="true" /><span>{status}</span></div>
       <div className="explore-overlay__reticle" aria-hidden="true"><span /><span /></div>
-      <button
-        ref={actionRef}
-        type="button"
-        className="explore-overlay__exit"
-        onClick={interiorReady ? onExitInterior : onExit}
-        disabled={!interactive}
-      >
-        <span>{actionLabel}</span><span aria-hidden="true">{interiorReady ? '↙' : '×'}</span>
-      </button>
+      <div className="explore-overlay__actions">
+        {stableInterior ? (
+          <>
+            <button ref={openDoorRef} type="button" className="explore-overlay__exit" onClick={interiorReady ? onOpenInteriorDoor : onCloseInteriorDoor}>
+              <span>{interiorReady ? 'Open door' : 'Close door'}</span><span aria-hidden="true">{interiorReady ? '↗' : '×'}</span>
+            </button>
+            <button ref={actionRef} type="button" className="explore-overlay__exit" onClick={onExitInterior}>
+              <span>Quit interior</span><span aria-hidden="true">↙</span>
+            </button>
+          </>
+        ) : (
+          <button
+            ref={actionRef}
+            type="button"
+            className="explore-overlay__exit"
+            onClick={action}
+            disabled={!interactive}
+          >
+            <span>{actionLabel}</span><span aria-hidden="true">{actionIcon}</span>
+          </button>
+        )}
+      </div>
     </aside>
   );
 }
