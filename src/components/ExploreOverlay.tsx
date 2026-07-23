@@ -26,7 +26,7 @@ function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase): string {
   if (viewPhase === 'openingDoorForExit') return 'Opening driver door before exit';
   if (viewPhase === 'exitingInterior') return 'Leaving cockpit · driver door remains open';
   if (viewPhase === 'interior') return 'Open the door again or use Quit interior to leave';
-  return 'Select the door marker to open · drag to orbit';
+  return 'Select the door marker · left drag orbit · right drag pan · wheel zoom';
 }
 
 export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOpenInteriorDoor, onCloseInteriorDoor, onExitInterior, onCloseExteriorDoor }: Props) {

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import type { GLTFLoader } from 'three-stdlib';
@@ -68,28 +70,71 @@ interface Props {
 }
 
 const KTX2_LOADERS = new WeakMap<THREE.WebGLRenderer, KTX2Loader>();
+const DRACO_LOADERS = new WeakMap<THREE.WebGLRenderer, DRACOLoader>();
 const GLTF_CLEAR_TIMERS = new Map<string, number>();
 const RESOURCE_DISPOSAL_TIMERS = new WeakMap<object, number>();
-function configureKTX2Loader(loader: GLTFLoader, renderer: THREE.WebGLRenderer): void {
-  let ktx2Loader = KTX2_LOADERS.get(renderer);
-  if (!ktx2Loader) {
-    ktx2Loader = new KTX2Loader()
-      // One worker avoids a second 16-24 MiB WASM heap. The model is loaded
-      // once, so the small transcode-time tradeoff is preferable on phones.
-      .setWorkerLimit(1)
-      .detectSupport(renderer);
-    KTX2_LOADERS.set(renderer, ktx2Loader);
-  }
-  // Drei currently exposes GLTFLoader through three-stdlib's older declaration,
-  // while the runtime loader is Three's current implementation.
-  (loader as unknown as { setKTX2Loader(value: KTX2Loader): void }).setKTX2Loader(ktx2Loader);
+let meshoptWorkerCount = 0;
+
+interface RuntimeGLTFLoader {
+  setDRACOLoader(value: DRACOLoader): void;
+  setKTX2Loader(value: KTX2Loader): void;
+  setMeshoptDecoder(value: typeof MeshoptDecoder): void;
 }
 
-export function releaseKTX2Loader(renderer: THREE.WebGLRenderer): void {
-  const loader = KTX2_LOADERS.get(renderer);
-  if (!loader) return;
-  loader.dispose();
-  KTX2_LOADERS.delete(renderer);
+function setMeshoptWorkerCount(count: number): void {
+  if (meshoptWorkerCount === count) return;
+  MeshoptDecoder.useWorkers(count);
+  meshoptWorkerCount = count;
+}
+
+function configureModelDecoders(
+  loader: GLTFLoader,
+  renderer: THREE.WebGLRenderer,
+  modelVariant: ModelVariant,
+  modelTier: ModelTier,
+): void {
+  const runtimeLoader = loader as unknown as RuntimeGLTFLoader;
+
+  if (GPU_COMPRESSED_VARIANTS.has(modelVariant)) {
+    let ktx2Loader = KTX2_LOADERS.get(renderer);
+    if (!ktx2Loader) {
+      ktx2Loader = new KTX2Loader()
+        // One worker avoids a second 16-24 MiB WASM heap. Texture transcoding
+        // remains off the main thread while keeping mobile memory predictable.
+        .setWorkerLimit(1)
+        .detectSupport(renderer);
+      KTX2_LOADERS.set(renderer, ktx2Loader);
+    }
+    runtimeLoader.setKTX2Loader(ktx2Loader);
+  }
+
+  let dracoLoader = DRACO_LOADERS.get(renderer);
+  if (!dracoLoader) {
+    // Three resolves its decoder binaries through local Vite assets. Do not
+    // preload them: current NORKA variants use Meshopt, not Draco.
+    dracoLoader = new DRACOLoader().setWorkerLimit(1);
+    DRACO_LOADERS.set(renderer, dracoLoader);
+  }
+  runtimeLoader.setDRACOLoader(dracoLoader);
+
+  // Meshopt is required by every optimized GLB. Async workers prevent hundreds
+  // of compressed buffer views from stalling the loading animation/main thread.
+  setMeshoptWorkerCount(modelTier === 'desktop' ? 2 : 1);
+  runtimeLoader.setMeshoptDecoder(MeshoptDecoder);
+}
+
+export function releaseModelDecoders(renderer: THREE.WebGLRenderer): void {
+  const ktx2Loader = KTX2_LOADERS.get(renderer);
+  if (ktx2Loader) {
+    ktx2Loader.dispose();
+    KTX2_LOADERS.delete(renderer);
+  }
+  const dracoLoader = DRACO_LOADERS.get(renderer);
+  if (dracoLoader) {
+    dracoLoader.dispose();
+    DRACO_LOADERS.delete(renderer);
+  }
+  setMeshoptWorkerCount(0);
 }
 
 function cleanMetadataValue(value: unknown, fallback: string): string {
@@ -168,9 +213,11 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
   const modelVariant = useMemo(() => selectRuntimeVariant(renderer, modelTier), [modelTier, renderer]);
   const modelUrl = URLS[modelVariant];
   const extendLoader = useCallback((loader: GLTFLoader) => {
-    if (GPU_COMPRESSED_VARIANTS.has(modelVariant)) configureKTX2Loader(loader, renderer);
-  }, [modelVariant, renderer]);
-  const gltf = useGLTF(modelUrl, false, true, extendLoader);
+    configureModelDecoders(loader, renderer, modelVariant, modelTier);
+  }, [modelTier, modelVariant, renderer]);
+  // Decoder configuration is explicit above. Keeping both Drei switches false
+  // prevents its shared CDN Draco loader/default Meshopt decoder overwriting it.
+  const gltf = useGLTF(modelUrl, false, false, extendLoader);
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
   const reportedSelection = useRef<string | null>(null);
   const renderedGlassOpacity = useRef(Number.NaN);
@@ -224,9 +271,9 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
     };
   }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy, modelTier]);
   useLayoutEffect(() => {
-    // useGLTF resolves only after every embedded texture has finished loading,
-    // so the transcoder pool is no longer needed here.
-    releaseKTX2Loader(renderer);
+    // useGLTF resolves only after textures and geometry have finished decoding,
+    // so worker pools can be released without affecting the resident model.
+    releaseModelDecoders(renderer);
   }, [gltf, renderer]);
   useEffect(() => {
     const root = document.documentElement;

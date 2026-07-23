@@ -1,11 +1,11 @@
-import { Component, Suspense, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { OrbitControls } from '@react-three/drei';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { CameraRig } from './CameraRig';
-import { CarModel, releaseKTX2Loader, type ModelReadyDetails } from './CarModel';
+import { CarModel, releaseModelDecoders, type ModelReadyDetails } from './CarModel';
 import { readDeviceProfile, type DeviceProfile } from './deviceProfile';
 import { isExteriorOrbitEnabled, isInteriorOrbitEnabled, isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { Lighting } from './Lighting';
@@ -30,7 +30,22 @@ interface Props {
   readonly onInteriorExitComplete: () => void;
   readonly onExteriorDoorCloseComplete: () => void;
 }
-const KTX2_RELEASE_TIMERS = new WeakMap<THREE.WebGLRenderer, number>();
+const DECODER_RELEASE_TIMERS = new WeakMap<THREE.WebGLRenderer, number>();
+const EXTERIOR_PAN_MIN = new THREE.Vector3(-1.65, -0.3, -3);
+const EXTERIOR_PAN_MAX = new THREE.Vector3(1.65, 1.85, 3);
+const WHEEL_ZOOM_SCALE = 0.95;
+const WHEEL_ZOOM_SENSITIVITY = 0.72;
+const WHEEL_ZOOM_DAMPING = 12;
+const WHEEL_ZOOM_STOP_DISTANCE = 0.002;
+const VIEWER_MOUSE_BUTTONS = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.PAN,
+};
+const VIEWER_TOUCHES = {
+  ONE: THREE.TOUCH.ROTATE,
+  TWO: THREE.TOUCH.DOLLY_PAN,
+};
 function profilesEqual(left: DeviceProfile, right: DeviceProfile): boolean {
   return left.isMobile === right.isMobile
     && left.compact === right.compact
@@ -78,24 +93,122 @@ function VisibilityController() {
   }, [invalidate, setFrameloop]);
   return null;
 }
-function KTX2Lifecycle() {
+function DecoderLifecycle() {
   const renderer = useThree((state) => state.gl);
   useEffect(() => {
-    const pendingRelease = KTX2_RELEASE_TIMERS.get(renderer);
+    const pendingRelease = DECODER_RELEASE_TIMERS.get(renderer);
     if (pendingRelease !== undefined) {
       window.clearTimeout(pendingRelease);
-      KTX2_RELEASE_TIMERS.delete(renderer);
+      DECODER_RELEASE_TIMERS.delete(renderer);
     }
     return () => {
       // StrictMode immediately remounts and cancels this task. A real Canvas
-      // teardown releases a loader even when CarModel was still suspended.
+      // teardown releases decoder workers even when CarModel was suspended.
       const timer = window.setTimeout(() => {
-        releaseKTX2Loader(renderer);
-        KTX2_RELEASE_TIMERS.delete(renderer);
+        releaseModelDecoders(renderer);
+        DECODER_RELEASE_TIMERS.delete(renderer);
       }, 0);
-      KTX2_RELEASE_TIMERS.set(renderer, timer);
+      DECODER_RELEASE_TIMERS.set(renderer, timer);
     };
   }, [renderer]);
+  return null;
+}
+
+interface SmoothWheelZoomProps {
+  readonly controlsRef: RefObject<OrbitControlsImpl | null>;
+  readonly enabled: boolean;
+  readonly minDistance: number;
+  readonly maxDistance: number;
+  readonly reducedMotion: boolean;
+}
+
+function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reducedMotion }: SmoothWheelZoomProps) {
+  const renderer = useThree((state) => state.gl);
+  const invalidate = useThree((state) => state.invalidate);
+  const targetDistance = useRef<number | null>(null);
+  const cameraOffset = useRef(new THREE.Vector3());
+
+  const applyDistance = useCallback((nextDistance: number): void => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const offset = cameraOffset.current.copy(controls.object.position).sub(controls.target);
+    if (offset.lengthSq() <= 1e-10) return;
+    controls.object.position.copy(controls.target).add(offset.setLength(nextDistance));
+    controls.update();
+  }, [controlsRef]);
+
+  useEffect(() => {
+    targetDistance.current = null;
+    if (!enabled) return;
+    const canvas = renderer.domElement;
+    const controls = controlsRef.current;
+    const cancelWheelZoom = (): void => {
+      targetDistance.current = null;
+    };
+    const handleWheel = (event: WheelEvent): void => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      // OrbitControls applies wheel zoom immediately. Capture and stop only the
+      // wheel event so touch pinch and middle-button dolly keep their behavior.
+      event.stopImmediatePropagation();
+
+      const modeScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? canvas.clientHeight : 1;
+      const delta = THREE.MathUtils.clamp(event.deltaY * modeScale, -120, 120);
+      const activeControls = controlsRef.current;
+      if (!activeControls) return;
+
+      const currentDistance = activeControls.getDistance();
+      const queuedDistance = targetDistance.current ?? currentDistance;
+      const scale = Math.pow(
+        WHEEL_ZOOM_SCALE,
+        WHEEL_ZOOM_SENSITIVITY * Math.abs(delta * 0.01),
+      );
+      const nextDistance = THREE.MathUtils.clamp(
+        delta < 0 ? queuedDistance * scale : queuedDistance / scale,
+        minDistance,
+        maxDistance,
+      );
+
+      if (reducedMotion) {
+        applyDistance(nextDistance);
+        invalidate();
+        return;
+      }
+
+      targetDistance.current = nextDistance;
+      invalidate();
+    };
+
+    controls?.addEventListener('start', cancelWheelZoom);
+    canvas.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+    return () => {
+      targetDistance.current = null;
+      controls?.removeEventListener('start', cancelWheelZoom);
+      canvas.removeEventListener('wheel', handleWheel, true);
+    };
+  }, [applyDistance, controlsRef, enabled, invalidate, maxDistance, minDistance, reducedMotion, renderer]);
+
+  useFrame((_, delta) => {
+    if (!enabled || reducedMotion) return;
+    const controls = controlsRef.current;
+    const destination = targetDistance.current;
+    if (!controls || destination === null) return;
+
+    const frameTime = Math.min(delta, 0.05);
+    const distance = controls.getDistance();
+    const nextDistance = THREE.MathUtils.damp(distance, destination, WHEEL_ZOOM_DAMPING, frameTime);
+    applyDistance(nextDistance);
+
+    if (Math.abs(nextDistance - destination) <= WHEEL_ZOOM_STOP_DISTANCE) {
+      applyDistance(destination);
+      targetDistance.current = null;
+      return;
+    }
+    invalidate();
+  }, -0.5);
+
   return null;
 }
 function WebGLFallback({ onFailure }: { readonly onFailure: () => void }) {
@@ -133,11 +246,31 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
   const profile = useProfile();
   const [gpuConstrained, setGpuConstrained] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const clampedPanTarget = useRef(new THREE.Vector3());
+  const panCorrection = useRef(new THREE.Vector3());
   const interactionRig = useMemo(createVehicleInteractionRig, []);
   const shot = useMemo(() => getShotSet(profile.compact, profile.landscape)[INITIAL_STORY_SHOT], [profile.compact, profile.landscape]);
   const exteriorOrbit = isExteriorOrbitEnabled(phase, viewPhase);
   const interiorOrbit = isInteriorOrbitEnabled(phase, viewPhase);
   const interactive = isStableExploreView(phase, viewPhase);
+  const minDistance = interiorOrbit ? 0.45 : profile.isMobile ? 3.6 : 2.9;
+  const maxDistance = interiorOrbit ? 1.2 : profile.isMobile ? 13.5 : 10.5;
+  const handleControlsChange = useCallback((): void => {
+    if (!exteriorOrbit) return;
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    const clampedTarget = clampedPanTarget.current
+      .copy(controls.target)
+      .clamp(EXTERIOR_PAN_MIN, EXTERIOR_PAN_MAX);
+    const correction = panCorrection.current.copy(clampedTarget).sub(controls.target);
+    if (correction.lengthSq() <= 1e-10) return;
+
+    // Move the camera together with its target so clamping never changes the
+    // current view direction or zoom distance.
+    controls.target.copy(clampedTarget);
+    controls.object.position.add(correction);
+  }, [exteriorOrbit]);
   useEffect(() => {
     if (!interactive) return;
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -163,7 +296,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
   }, [exteriorOrbit, interactive]);
   const canvasLabel = interiorOrbit
     ? 'Interactive vehicle cockpit. Use arrow keys or drag to look around.'
-    : 'Interactive 3D vehicle viewer. Use arrow keys to orbit and plus or minus to zoom.';
+    : 'Interactive 3D vehicle viewer. Drag with the left mouse button to orbit, drag with the right mouse button to pan, and use the wheel to zoom.';
   return (
     <div className={`canvas-shell${interactive ? ' is-interactive' : ''}`} aria-hidden={!interactive} aria-label={interactive ? canvasLabel : undefined} role={interactive ? 'region' : undefined} tabIndex={interactive ? 0 : -1}>
       <CanvasBoundary onFailure={onWebGLFailure}>
@@ -186,7 +319,14 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
         >
           <color attach="background" args={['#e8edf2']} />
           <VisibilityController />
-          <KTX2Lifecycle />
+          <DecoderLifecycle />
+          <SmoothWheelZoom
+            controlsRef={controlsRef}
+            enabled={exteriorOrbit}
+            minDistance={minDistance}
+            maxDistance={maxDistance}
+            reducedMotion={reducedMotion}
+          />
           <CameraRig
             controlsRef={controlsRef}
             compact={profile.compact}
@@ -223,20 +363,25 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
           </Suspense>
           <OrbitControls
             ref={controlsRef}
+            onChange={handleControlsChange}
             enabled={interactive}
             enableDamping
             dampingFactor={0.075}
-            enablePan={false}
+            enablePan={exteriorOrbit}
             enableZoom={exteriorOrbit}
             enableRotate
-            minDistance={interiorOrbit ? 0.45 : profile.isMobile ? 4.4 : 3.4}
-            maxDistance={interiorOrbit ? 1.2 : profile.isMobile ? 13.5 : 10.5}
+            screenSpacePanning
+            panSpeed={profile.isMobile ? 0.55 : 0.7}
+            mouseButtons={VIEWER_MOUSE_BUTTONS}
+            touches={VIEWER_TOUCHES}
+            minDistance={minDistance}
+            maxDistance={maxDistance}
             minPolarAngle={interiorOrbit ? 0.82 : 0.34}
             maxPolarAngle={interiorOrbit ? 1.68 : Math.PI * 0.49}
             minAzimuthAngle={interiorOrbit ? 2.48 : -Infinity}
             maxAzimuthAngle={interiorOrbit ? 3.13 : Infinity}
             rotateSpeed={interiorOrbit ? 0.42 : 0.58}
-            zoomSpeed={0.72}
+            zoomSpeed={0.65}
           />
         </Canvas>
       </CanvasBoundary>
