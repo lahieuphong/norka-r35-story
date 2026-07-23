@@ -173,6 +173,12 @@
   .door-hotspot__label { left: calc(100% + .18rem); font-size: .65rem; }
   .door-hotspot-wrap[data-label-side="left"] .door-hotspot__label { right: calc(100% + .18rem); left: auto; }
 }
+@media (hover: none), (pointer: coarse) {
+  .explore-overlay__status,.explore-overlay__exit,.door-hotspot__ring,.door-hotspot__label { -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .explore-overlay__status { background: rgba(244,247,250,.94); }
+  .explore-overlay__exit { background: rgba(11,24,38,.94); }
+  .door-hotspot__label { background: rgba(11,24,38,.9); }
+}
 @media (max-width: 380px) {
   .explore-overlay__actions { flex-direction: column; gap: .35rem; }
   .explore-overlay__exit { justify-content: space-between; gap: .45rem; min-height: 2.55rem; padding: .68rem .72rem; font-size: .6rem; letter-spacing: .08em; }

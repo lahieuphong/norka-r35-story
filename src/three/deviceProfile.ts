@@ -39,7 +39,7 @@ export function readDeviceProfile(): DeviceProfile {
   const height = window.innerHeight;
   const shortEdge = Math.min(width, height);
   const isMobile = width <= 767 || (touch && shortEdge <= 1024);
-  const cap = lowEnd ? 1.5 : 2;
+  const cap = lowEnd ? 1.5 : isMobile ? 1.75 : 2;
   const pixelBudget = lowEnd ? 1_750_000 : isMobile ? 3_000_000 : 4_000_000;
   const budgetDpr = Math.sqrt(pixelBudget / Math.max(1, width * height));
   // A DPR floor of 1 defeats the pixel budget on ultrawide, 4K, and 5K
@@ -64,6 +64,6 @@ export function readDeviceProfile(): DeviceProfile {
     // framebuffer saves considerably more memory than MSAA adds in edge
     // quality there. Keep the existing guarded desktop behavior unchanged.
     antialias: !isMobile && !lowEnd && dpr <= 1.25 && renderPixels <= 2_250_000,
-    anisotropy: lowEnd ? 4 : 8,
+    anisotropy: isMobile || lowEnd ? 4 : 8,
   };
 }

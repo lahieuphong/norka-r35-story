@@ -37,6 +37,8 @@ const WHEEL_ZOOM_SCALE = 0.95;
 const WHEEL_ZOOM_SENSITIVITY = 0.72;
 const WHEEL_ZOOM_DAMPING = 12;
 const WHEEL_ZOOM_STOP_DISTANCE = 0.002;
+const MOBILE_PINCH_ZOOM_SENSITIVITY = 0.76;
+const MOBILE_PINCH_ZOOM_DAMPING = 16;
 const VIEWER_MOUSE_BUTTONS = {
   LEFT: THREE.MOUSE.ROTATE,
   MIDDLE: THREE.MOUSE.DOLLY,
@@ -46,6 +48,14 @@ const VIEWER_TOUCHES = {
   ONE: THREE.TOUCH.ROTATE,
   TWO: THREE.TOUCH.DOLLY_PAN,
 };
+function readTouchSpan(points: ReadonlyMap<number, THREE.Vector2>): number {
+  let firstPoint: THREE.Vector2 | undefined;
+  for (const point of points.values()) {
+    if (!firstPoint) firstPoint = point;
+    else return firstPoint.distanceTo(point);
+  }
+  return 0;
+}
 function profilesEqual(left: DeviceProfile, right: DeviceProfile): boolean {
   return left.isMobile === right.isMobile
     && left.compact === right.compact
@@ -114,18 +124,73 @@ function DecoderLifecycle() {
   return null;
 }
 
-interface SmoothWheelZoomProps {
+function ControlsInteractionReset({ controlsRef, interactive }: {
+  readonly controlsRef: RefObject<OrbitControlsImpl | null>;
+  readonly interactive: boolean;
+}) {
+  const wasInteractive = useRef(interactive);
+  const savedPosition = useRef(new THREE.Vector3());
+  const savedQuaternion = useRef(new THREE.Quaternion());
+  const savedTarget = useRef(new THREE.Vector3());
+
+  const clearMomentum = useCallback((): void => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    savedPosition.current.copy(controls.object.position);
+    savedQuaternion.current.copy(controls.object.quaternion);
+    savedTarget.current.copy(controls.target);
+    const dampingEnabled = controls.enableDamping;
+
+    // OrbitControls keeps rotate/pan deltas in closures. Updating once with
+    // damping off consumes those deltas; restoring the snapshot makes this a
+    // momentum reset with no visible camera or target change.
+    controls.enableDamping = false;
+    controls.update();
+    controls.object.position.copy(savedPosition.current);
+    controls.object.quaternion.copy(savedQuaternion.current);
+    controls.target.copy(savedTarget.current);
+    controls.enableDamping = dampingEnabled;
+  }, [controlsRef]);
+
+  useEffect(() => {
+    const previous = wasInteractive.current;
+    wasInteractive.current = interactive;
+    if (previous && !interactive) clearMomentum();
+  }, [clearMomentum, interactive]);
+
+  useEffect(() => {
+    const handleVisibility = (): void => {
+      if (document.visibilityState === 'hidden') clearMomentum();
+    };
+    window.addEventListener('blur', clearMomentum);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('blur', clearMomentum);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [clearMomentum]);
+
+  return null;
+}
+
+interface SmoothZoomControlsProps {
   readonly controlsRef: RefObject<OrbitControlsImpl | null>;
   readonly enabled: boolean;
+  readonly mobile: boolean;
   readonly minDistance: number;
   readonly maxDistance: number;
   readonly reducedMotion: boolean;
 }
 
-function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reducedMotion }: SmoothWheelZoomProps) {
+function SmoothZoomControls({ controlsRef, enabled, mobile, minDistance, maxDistance, reducedMotion }: SmoothZoomControlsProps) {
   const renderer = useThree((state) => state.gl);
   const invalidate = useThree((state) => state.invalidate);
   const targetDistance = useRef<number | null>(null);
+  const activeDamping = useRef(WHEEL_ZOOM_DAMPING);
+  const touchPoints = useRef(new Map<number, THREE.Vector2>());
+  const pinchStartSpan = useRef(0);
+  const pinchStartDistance = useRef(0);
+  const pinchActive = useRef(false);
   const cameraOffset = useRef(new THREE.Vector3());
 
   const applyDistance = useCallback((nextDistance: number): void => {
@@ -134,7 +199,6 @@ function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reduc
     const offset = cameraOffset.current.copy(controls.object.position).sub(controls.target);
     if (offset.lengthSq() <= 1e-10) return;
     controls.object.position.copy(controls.target).add(offset.setLength(nextDistance));
-    controls.update();
   }, [controlsRef]);
 
   useEffect(() => {
@@ -143,13 +207,13 @@ function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reduc
     const canvas = renderer.domElement;
     const controls = controlsRef.current;
     const cancelWheelZoom = (): void => {
-      targetDistance.current = null;
+      if (!pinchActive.current) targetDistance.current = null;
     };
     const handleWheel = (event: WheelEvent): void => {
       if (event.deltaY === 0) return;
       event.preventDefault();
       // OrbitControls applies wheel zoom immediately. Capture and stop only the
-      // wheel event so touch pinch and middle-button dolly keep their behavior.
+      // wheel event; mobile pinch is smoothed separately below.
       event.stopImmediatePropagation();
 
       const modeScale = event.deltaMode === WheelEvent.DOM_DELTA_LINE
@@ -177,6 +241,7 @@ function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reduc
         return;
       }
 
+      activeDamping.current = WHEEL_ZOOM_DAMPING;
       targetDistance.current = nextDistance;
       invalidate();
     };
@@ -190,6 +255,110 @@ function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reduc
     };
   }, [applyDistance, controlsRef, enabled, invalidate, maxDistance, minDistance, reducedMotion, renderer]);
 
+  useEffect(() => {
+    touchPoints.current.clear();
+    pinchStartSpan.current = 0;
+    pinchStartDistance.current = 0;
+    pinchActive.current = false;
+    if (!enabled || !mobile) return;
+
+    const canvas = renderer.domElement;
+    const ownerDocument = canvas.ownerDocument;
+    const beginPinch = (): void => {
+      const controls = controlsRef.current;
+      const span = readTouchSpan(touchPoints.current);
+      if (!controls || touchPoints.current.size !== 2 || span <= 1) {
+        pinchActive.current = false;
+        pinchStartSpan.current = 0;
+        return;
+      }
+      pinchStartSpan.current = span;
+      pinchStartDistance.current = targetDistance.current ?? controls.getDistance();
+      pinchActive.current = true;
+      activeDamping.current = MOBILE_PINCH_ZOOM_DAMPING;
+    };
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (event.pointerType !== 'touch') return;
+      touchPoints.current.set(event.pointerId, new THREE.Vector2(event.clientX, event.clientY));
+      if (touchPoints.current.size === 2) beginPinch();
+      else if (touchPoints.current.size > 2) {
+        pinchActive.current = false;
+        pinchStartSpan.current = 0;
+      }
+    };
+    const handlePointerMove = (event: PointerEvent): void => {
+      const point = touchPoints.current.get(event.pointerId);
+      if (!point) return;
+      point.set(event.clientX, event.clientY);
+      if (touchPoints.current.size !== 2) return;
+      if (!pinchActive.current || pinchStartSpan.current <= 1) beginPinch();
+      if (!pinchActive.current) return;
+
+      const span = readTouchSpan(touchPoints.current);
+      if (span <= 1) return;
+      const requestedDistance = pinchStartDistance.current * Math.pow(
+        pinchStartSpan.current / span,
+        MOBILE_PINCH_ZOOM_SENSITIVITY,
+      );
+      const nextDistance = THREE.MathUtils.clamp(requestedDistance, minDistance, maxDistance);
+
+      if (reducedMotion) {
+        applyDistance(nextDistance);
+        targetDistance.current = null;
+      } else {
+        activeDamping.current = MOBILE_PINCH_ZOOM_DAMPING;
+        targetDistance.current = nextDistance;
+      }
+
+      // Rebase at either limit so reversing the gesture responds immediately
+      // instead of consuming the overshoot accumulated beyond the clamp.
+      if (nextDistance !== requestedDistance) {
+        pinchStartSpan.current = span;
+        pinchStartDistance.current = nextDistance;
+      }
+      invalidate();
+    };
+    const handlePointerEnd = (event: PointerEvent): void => {
+      if (!touchPoints.current.delete(event.pointerId)) return;
+      pinchActive.current = false;
+      pinchStartSpan.current = 0;
+      pinchStartDistance.current = 0;
+      if (touchPoints.current.size === 2) beginPinch();
+    };
+    const cancelGesture = (): void => {
+      targetDistance.current = null;
+      touchPoints.current.clear();
+      pinchActive.current = false;
+      pinchStartSpan.current = 0;
+      pinchStartDistance.current = 0;
+    };
+    const handlePointerCancel = (event: PointerEvent): void => {
+      if (!touchPoints.current.has(event.pointerId)) return;
+      cancelGesture();
+    };
+    const handleVisibility = (): void => {
+      if (ownerDocument.visibilityState === 'hidden') cancelGesture();
+    };
+
+    canvas.addEventListener('pointerdown', handlePointerDown, true);
+    ownerDocument.addEventListener('pointermove', handlePointerMove, true);
+    ownerDocument.addEventListener('pointerup', handlePointerEnd, true);
+    ownerDocument.addEventListener('pointercancel', handlePointerCancel, true);
+    ownerDocument.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', cancelGesture);
+    window.addEventListener('orientationchange', cancelGesture);
+    return () => {
+      cancelGesture();
+      canvas.removeEventListener('pointerdown', handlePointerDown, true);
+      ownerDocument.removeEventListener('pointermove', handlePointerMove, true);
+      ownerDocument.removeEventListener('pointerup', handlePointerEnd, true);
+      ownerDocument.removeEventListener('pointercancel', handlePointerCancel, true);
+      ownerDocument.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('blur', cancelGesture);
+      window.removeEventListener('orientationchange', cancelGesture);
+    };
+  }, [applyDistance, controlsRef, enabled, invalidate, maxDistance, minDistance, mobile, reducedMotion, renderer]);
+
   useFrame((_, delta) => {
     if (!enabled || reducedMotion) return;
     const controls = controlsRef.current;
@@ -198,7 +367,7 @@ function SmoothWheelZoom({ controlsRef, enabled, minDistance, maxDistance, reduc
 
     const frameTime = Math.min(delta, 0.05);
     const distance = controls.getDistance();
-    const nextDistance = THREE.MathUtils.damp(distance, destination, WHEEL_ZOOM_DAMPING, frameTime);
+    const nextDistance = THREE.MathUtils.damp(distance, destination, activeDamping.current, frameTime);
     applyDistance(nextDistance);
 
     if (Math.abs(nextDistance - destination) <= WHEEL_ZOOM_STOP_DISTANCE) {
@@ -254,7 +423,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
   const interiorOrbit = isInteriorOrbitEnabled(phase, viewPhase);
   const interactive = isStableExploreView(phase, viewPhase);
   const minDistance = interiorOrbit ? 0.45 : profile.isMobile ? 3.6 : 2.9;
-  const maxDistance = interiorOrbit ? 1.2 : profile.isMobile ? 13.5 : 10.5;
+  const maxDistance = interiorOrbit ? 1.2 : profile.isMobile ? 15 : 10.5;
   const handleControlsChange = useCallback((): void => {
     if (!exteriorOrbit) return;
     const controls = controlsRef.current;
@@ -295,8 +464,12 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [exteriorOrbit, interactive]);
   const canvasLabel = interiorOrbit
-    ? 'Interactive vehicle cockpit. Use arrow keys or drag to look around.'
-    : 'Interactive 3D vehicle viewer. Drag with the left mouse button to orbit, drag with the right mouse button to pan, and use the wheel to zoom.';
+    ? profile.isMobile
+      ? 'Interactive vehicle cockpit. Drag one finger to look around.'
+      : 'Interactive vehicle cockpit. Use arrow keys or drag to look around.'
+    : profile.isMobile
+      ? 'Interactive 3D vehicle viewer. Drag one finger to orbit, and use two fingers to move and zoom.'
+      : 'Interactive 3D vehicle viewer. Drag with the left mouse button to orbit, drag with the right mouse button to pan, and use the wheel to zoom.';
   return (
     <div className={`canvas-shell${interactive ? ' is-interactive' : ''}`} aria-hidden={!interactive} aria-label={interactive ? canvasLabel : undefined} role={interactive ? 'region' : undefined} tabIndex={interactive ? 0 : -1}>
       <CanvasBoundary onFailure={onWebGLFailure}>
@@ -320,9 +493,11 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
           <color attach="background" args={['#e8edf2']} />
           <VisibilityController />
           <DecoderLifecycle />
-          <SmoothWheelZoom
+          <ControlsInteractionReset controlsRef={controlsRef} interactive={interactive} />
+          <SmoothZoomControls
             controlsRef={controlsRef}
             enabled={exteriorOrbit}
+            mobile={profile.isMobile}
             minDistance={minDistance}
             maxDistance={maxDistance}
             reducedMotion={reducedMotion}
@@ -366,12 +541,12 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
             onChange={handleControlsChange}
             enabled={interactive}
             enableDamping
-            dampingFactor={0.075}
+            dampingFactor={profile.isMobile ? 0.09 : 0.075}
             enablePan={exteriorOrbit}
-            enableZoom={exteriorOrbit}
+            enableZoom={exteriorOrbit && !profile.isMobile}
             enableRotate
             screenSpacePanning
-            panSpeed={profile.isMobile ? 0.55 : 0.7}
+            panSpeed={profile.isMobile ? 0.5 : 0.7}
             mouseButtons={VIEWER_MOUSE_BUTTONS}
             touches={VIEWER_TOUCHES}
             minDistance={minDistance}
@@ -380,7 +555,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
             maxPolarAngle={interiorOrbit ? 1.68 : Math.PI * 0.49}
             minAzimuthAngle={interiorOrbit ? 2.48 : -Infinity}
             maxAzimuthAngle={interiorOrbit ? 3.13 : Infinity}
-            rotateSpeed={interiorOrbit ? 0.42 : 0.58}
+            rotateSpeed={interiorOrbit ? 0.42 : profile.isMobile ? 0.52 : 0.58}
             zoomSpeed={0.65}
           />
         </Canvas>

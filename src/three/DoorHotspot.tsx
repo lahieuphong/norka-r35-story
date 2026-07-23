@@ -18,6 +18,7 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
   const visibleRef = useRef<boolean | null>(null);
+  const labelLayout = useRef({ viewportWidth: 0, rightExtent: 120 });
   const worldPosition = useMemo(() => new THREE.Vector3(), []);
   const projectedPosition = useMemo(() => new THREE.Vector3(), []);
   const interactive = available && phase === 'explore' && viewPhase === 'exterior';
@@ -27,9 +28,13 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
     const button = buttonRef.current;
     if (!content || !button || content.dataset.visible !== 'true') return;
     const viewportWidth = document.documentElement.clientWidth;
-    const buttonRight = button.getBoundingClientRect().right;
-    const labelWidth = labelRef.current?.getBoundingClientRect().width ?? 112;
-    content.dataset.labelSide = buttonRight + labelWidth + 8 > viewportWidth ? 'left' : 'right';
+    const buttonRect = button.getBoundingClientRect();
+    const buttonCenter = buttonRect.left + buttonRect.width * 0.5;
+    const buttonWidth = button.offsetWidth;
+    const labelWidth = labelRef.current?.offsetWidth ?? 112;
+    labelLayout.current.viewportWidth = viewportWidth;
+    labelLayout.current.rightExtent = buttonWidth * 0.5 + labelWidth + 8;
+    content.dataset.labelSide = buttonCenter + labelLayout.current.rightExtent > viewportWidth ? 'left' : 'right';
   }, []);
 
   useEffect(() => {
@@ -37,15 +42,15 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
     const viewport = window.visualViewport;
     const observer = new ResizeObserver(updateLabelSide);
     observer.observe(document.documentElement);
+    if (buttonRef.current) observer.observe(buttonRef.current);
+    if (labelRef.current) observer.observe(labelRef.current);
     window.addEventListener('resize', updateLabelSide);
     viewport?.addEventListener('resize', updateLabelSide);
     const frame = requestAnimationFrame(updateLabelSide);
     const settledFrame = window.setTimeout(updateLabelSide, 300);
-    const layoutCheck = window.setInterval(updateLabelSide, 200);
     return () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(settledFrame);
-      window.clearInterval(layoutCheck);
       observer.disconnect();
       window.removeEventListener('resize', updateLabelSide);
       viewport?.removeEventListener('resize', updateLabelSide);
@@ -74,6 +79,14 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
     const onScreen = projectedPosition.z > -1 && projectedPosition.z < 1
       && Math.abs(projectedPosition.x) < 0.96 && Math.abs(projectedPosition.y) < 0.94;
     const visible = facingDriverSide && onScreen;
+    const layout = labelLayout.current;
+    if (visible && layout.viewportWidth > 0) {
+      const currentSide = content.dataset.labelSide;
+      const centerX = (projectedPosition.x * 0.5 + 0.5) * layout.viewportWidth;
+      const rightEdge = centerX + layout.rightExtent;
+      if (rightEdge > layout.viewportWidth - 8 && currentSide !== 'left') content.dataset.labelSide = 'left';
+      else if (rightEdge < layout.viewportWidth - 24 && currentSide === 'left') content.dataset.labelSide = 'right';
+    }
     if (visibleRef.current === visible) return;
     visibleRef.current = visible;
     content.dataset.visible = visible ? 'true' : 'false';
