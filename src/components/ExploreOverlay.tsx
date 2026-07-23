@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import type { ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
+import { ExploreActionIcon, type ExploreActionIconName } from './ExploreActionIcon';
 
 interface Props {
   readonly phase: ExplorePhase;
@@ -129,9 +130,9 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
   const action = exteriorDoorOpenReady ? onEnterInterior
     : exteriorDoorOpenAfterExitReady ? onCloseExteriorDoor
       : onExit;
-  const actionIcon = exteriorDoorOpenReady ? '→'
-    : transitioningInterior ? '…'
-      : '×';
+  const actionIcon: ExploreActionIconName = exteriorDoorOpenReady ? 'enter'
+    : transitioningInterior ? 'pending'
+      : 'close';
   return (
     <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`}>
       <div ref={statusRef} className="explore-overlay__status" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}><span className="explore-overlay__dot" aria-hidden="true" /><span>{status}</span></div>
@@ -140,10 +141,10 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
         {stableInterior ? (
           <>
             <button ref={openDoorRef} type="button" className="explore-overlay__exit" onClick={interiorReady ? onOpenInteriorDoor : onCloseInteriorDoor}>
-              <span>{interiorReady ? 'Open door' : 'Close door'}</span><span aria-hidden="true">{interiorReady ? '↗' : '×'}</span>
+              <span>{interiorReady ? 'Open door' : 'Close door'}</span><ExploreActionIcon name={interiorReady ? 'open' : 'close'} />
             </button>
             <button ref={actionRef} type="button" className="explore-overlay__exit" onClick={onExitInterior}>
-              <span>Quit interior</span><span aria-hidden="true">↙</span>
+              <span>Quit interior</span><ExploreActionIcon name="quit" />
             </button>
           </>
         ) : (
@@ -154,7 +155,7 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
             onClick={action}
             disabled={!interactive}
           >
-            <span>{actionLabel}</span><span aria-hidden="true">{actionIcon}</span>
+            <span>{actionLabel}</span><ExploreActionIcon name={actionIcon} />
           </button>
         )}
       </div>

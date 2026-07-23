@@ -26,6 +26,7 @@ export function App() {
   const exploreButtonRef = useRef<HTMLButtonElement>(null);
   const bodySnapshot = useRef<BodySnapshot | null>(null);
   const resetAfterLoad = useRef(false);
+  const resumeStoryAfterExit = useRef(false);
 
   useLayoutEffect(() => {
     const previous = window.history.scrollRestoration;
@@ -59,6 +60,20 @@ export function App() {
     const previousScrollBehavior = root.style.scrollBehavior;
     bodySnapshot.current = null; root.classList.remove('is-explore-locked'); root.style.scrollBehavior = 'auto'; window.scrollTo(0, lockedY.current); root.style.scrollBehavior = previousScrollBehavior;
   }, []);
+  useLayoutEffect(() => {
+    if (phase !== 'story' || !resumeStoryAfterExit.current) return;
+    resumeStoryAfterExit.current = false;
+    unlockScroll();
+    let focusFrame = 0;
+    const resumeFrame = requestAnimationFrame(() => {
+      enableStoryScrollTriggers();
+      focusFrame = requestAnimationFrame(() => exploreButtonRef.current?.focus());
+    });
+    return () => {
+      cancelAnimationFrame(resumeFrame);
+      cancelAnimationFrame(focusFrame);
+    };
+  }, [phase, unlockScroll]);
   useEffect(() => () => unlockScroll(), [unlockScroll]);
 
   const onModelReady = useCallback((details: ModelReadyDetails): void => { setModelAttribution(details.attribution); setModelReady(true); }, []);
@@ -149,16 +164,13 @@ export function App() {
     setViewPhase('exterior');
   }, []);
   const exitComplete = useCallback((): void => {
-    unlockScroll();
-    requestAnimationFrame(() => {
-      enableStoryScrollTriggers();
-      phaseRef.current = 'story';
-      viewPhaseRef.current = 'exterior';
-      setViewPhase('exterior');
-      setPhase('story');
-      requestAnimationFrame(() => exploreButtonRef.current?.focus());
-    });
-  }, [unlockScroll]);
+    if (phaseRef.current !== 'exiting') return;
+    resumeStoryAfterExit.current = true;
+    phaseRef.current = 'story';
+    viewPhaseRef.current = 'exterior';
+    setViewPhase('exterior');
+    setPhase('story');
+  }, []);
   const exploreActive = phase !== 'story';
 
   return (

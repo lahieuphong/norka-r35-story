@@ -48,6 +48,10 @@ const EXIT_APPROACH_DURATION = 1.05;
 const EXIT_DESTINATION_DURATION = 1.4;
 const EXIT_APPROACH_START = EXIT_DOORWAY_DURATION - 0.08;
 const EXIT_DESTINATION_START = EXIT_APPROACH_START + EXIT_APPROACH_DURATION - 0.08;
+// The story ScrollTrigger owns long-lived tweens on these same rig objects.
+// Every transition is killed explicitly on phase changes; GSAP overwrite must
+// stay off or it permanently removes the story's camera tweens while paused.
+const TRANSITION_OVERWRITE = false;
 
 export function CameraRig({
   controlsRef,
@@ -91,7 +95,7 @@ export function CameraRig({
     if (phase === 'entering') {
       const shot = shots.explore;
       const duration = reducedMotion ? 0.01 : 1.05;
-      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: true }, onUpdate: invalidate, onComplete: onEnterComplete })
+      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: TRANSITION_OVERWRITE }, onUpdate: invalidate, onComplete: onEnterComplete })
         .to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2] }, 0)
         .to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2] }, 0)
         .to(rig, { fov: shot.fov }, 0);
@@ -102,7 +106,7 @@ export function CameraRig({
       if (controls) rig.target.copy(controls.target);
       if (camera instanceof THREE.PerspectiveCamera) rig.fov = camera.fov;
       const duration = reducedMotion ? 0.01 : 0.9;
-      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: true }, onUpdate: invalidate, onComplete: onExitComplete })
+      activeTween.current = gsap.timeline({ defaults: { duration, ease: 'power3.inOut', overwrite: TRANSITION_OVERWRITE }, onUpdate: invalidate, onComplete: onExitComplete })
         .to(rig.position, { x: shot.position[0], y: shot.position[1], z: shot.position[2] }, 0)
         .to(rig.target, { x: shot.target[0], y: shot.target[1], z: shot.target[2] }, 0)
         .to(rig, { fov: shot.fov }, 0);
@@ -118,7 +122,7 @@ export function CameraRig({
       interactionRig.glassOpacity = 1;
       const duration = reducedMotion ? 0.01 : DOOR_OPEN_DURATION;
       activeTween.current = gsap.timeline({
-        defaults: { ease: 'power2.inOut', overwrite: true },
+        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.doorProgress = 1;
@@ -147,7 +151,7 @@ export function CameraRig({
       const doorway = interiorShots.doorway;
       const cockpit = interiorShots.cockpit;
       activeTween.current = gsap.timeline({
-        defaults: { ease: 'power2.inOut', overwrite: true },
+        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.doorProgress = 1;
@@ -176,7 +180,7 @@ export function CameraRig({
       const duration = reducedMotion ? 0.01 : DOOR_CLOSE_DURATION;
       interactionRig.glassOpacity = 1;
       activeTween.current = gsap.timeline({
-        defaults: { ease: 'power2.inOut', overwrite: true },
+        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.doorProgress = 0;
@@ -203,7 +207,7 @@ export function CameraRig({
       const doorway = interiorShots.doorway;
       const approach = interiorShots.approach;
       activeTween.current = gsap.timeline({
-        defaults: { ease: 'power2.inOut', overwrite: true },
+        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.doorProgress = 1;

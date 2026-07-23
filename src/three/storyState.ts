@@ -31,5 +31,9 @@ export function disableStoryScrollTriggers(): void {
 export function enableStoryScrollTriggers(): void {
   storyScrollSuspended = false;
   getStoryScrollTriggers().forEach((trigger) => trigger.enable(false, false));
+  // Body scroll locking temporarily changes the scroller geometry. Refresh
+  // after the story DOM has been committed and scrollY restored so camera and
+  // copy timelines resume from the same measured progress.
+  ScrollTrigger.refresh();
   ScrollTrigger.update();
 }
