@@ -75,23 +75,25 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, on
         gsap.set(copies, { autoAlpha: 0, yPercent: 0 });
         const firstCopy = copies[0];
         if (firstCopy) gsap.set(firstCopy, { autoAlpha: 1 });
+        const activateReducedSection = (index: number): void => {
+          const name = STORY_SHOT_ORDER[index];
+          const copy = copies[index];
+          if (!name || !copy) return;
+          copyShot(rig, shots, name);
+          gsap.set(copies, { autoAlpha: 0 });
+          gsap.set(copy, { autoAlpha: 1 });
+          onSceneChange();
+        };
         STORY_SHOT_ORDER.forEach((name, index) => {
           const section = sections[index];
-          const copy = copies[index];
-          if (!section || !copy) return;
-          const activate = (): void => {
-            copyShot(rig, shots, name);
-            gsap.set(copies, { autoAlpha: 0 });
-            gsap.set(copy, { autoAlpha: 1 });
-            onSceneChange();
-          };
+          if (!section || !copies[index]) return;
           ScrollTrigger.create({
             id: `${STORY_TRIGGER_PREFIX}-reduced-${name}`,
             trigger: section,
             start: 'top 50%',
             end: 'bottom 50%',
-            onEnter: activate,
-            onEnterBack: activate,
+            onEnter: () => activateReducedSection(index),
+            onEnterBack: () => activateReducedSection(index),
           });
         });
         ScrollTrigger.create({
@@ -100,7 +102,11 @@ export function useScrollStory({ ready, reducedMotion, rig, shots, waypoints, on
           start: 'top top',
           end: 'bottom bottom',
           onUpdate: (self) => setProgress(self.progress),
-          onRefresh: (self) => setProgress(self.progress),
+          onRefresh: (self) => {
+            setProgress(self.progress);
+            const index = Math.min(STORY_SHOT_ORDER.length - 1, Math.max(0, Math.round(self.progress * (STORY_SHOT_ORDER.length - 1))));
+            activateReducedSection(index);
+          },
         });
         return;
       }

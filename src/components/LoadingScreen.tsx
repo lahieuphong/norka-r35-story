@@ -1,6 +1,12 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useProgress } from '@react-three/drei';
-interface Props { readonly sceneReady: boolean; readonly failed: boolean; readonly reducedMotion: boolean; }
+import { PORTAL_TRANSITION_TIMING, StoryReturnTransition, type StoryReturnPhase } from './StoryReturnTransition';
+interface Props {
+  readonly sceneReady: boolean;
+  readonly failed: boolean;
+  readonly reducedMotion: boolean;
+  readonly onDismissed: () => void;
+}
 type LoadingVisualStyle = CSSProperties & {
   readonly '--loading-progress': number;
   readonly '--loading-heat-color': string;
@@ -9,13 +15,14 @@ type LoadingVisualStyle = CSSProperties & {
 };
 const HOLDING_PERCENTAGE = 95;
 const READY_HOLD_MS = 480;
-const EXIT_DURATION_MS = 1080;
 
-export function LoadingScreen({ sceneReady, failed, reducedMotion }: Props) {
+export function LoadingScreen({ sceneReady, failed, reducedMotion, onDismissed }: Props) {
   const { active } = useProgress();
   const [displayedPercentage, setDisplayedPercentage] = useState(1);
-  const [exiting, setExiting] = useState(false);
+  const [transitionPhase, setTransitionPhase] = useState<StoryReturnPhase | null>(null);
+  const [portalCovered, setPortalCovered] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const dismissedNotificationSent = useRef(false);
   const assetsComplete = sceneReady && !active;
   const requestedPercentage = assetsComplete ? 100 : HOLDING_PERCENTAGE;
   const complete = assetsComplete && displayedPercentage === 100;
@@ -26,6 +33,7 @@ export function LoadingScreen({ sceneReady, failed, reducedMotion }: Props) {
     '--loading-heat-color': `hsl(${Math.round(209 - heatIntensity * 5)}, ${Math.round(30 + heatIntensity * 58)}%, ${Math.round(62 - heatIntensity * 28)}%)`,
     '--loading-heat-shadow': `rgba(6, 102, 166, ${(0.04 + heatIntensity * 0.25).toFixed(3)})`,
     '--loading-heat-blur': `${(0.15 + heatIntensity * 1.15).toFixed(2)}rem`,
+    backgroundColor: portalCovered ? 'transparent' : undefined,
   };
 
   useEffect(() => {
@@ -42,24 +50,71 @@ export function LoadingScreen({ sceneReady, failed, reducedMotion }: Props) {
   }, [displayedPercentage, failed, reducedMotion, requestedPercentage]);
 
   useEffect(() => {
-    if (!complete) return;
+    if (!complete || failed) return;
     if (reducedMotion) {
-      setExiting(true);
+      setTransitionPhase('covering');
       return;
     }
-    // Let the completed counter and light sweep register before revealing the car.
-    const timer = window.setTimeout(() => setExiting(true), READY_HOLD_MS);
+    // Let the completed counter and light sweep register before the portal closes.
+    const timer = window.setTimeout(() => setTransitionPhase('covering'), READY_HOLD_MS);
     return () => window.clearTimeout(timer);
-  }, [complete, reducedMotion]);
+  }, [complete, failed, reducedMotion]);
 
   useEffect(() => {
-    if (!exiting) return;
-    const timer = window.setTimeout(() => setDismissed(true), reducedMotion ? 20 : EXIT_DURATION_MS);
+    if (failed || transitionPhase !== 'covering') return;
+    let settleFrame = 0;
+    let revealFrame = 0;
+    let revealFallback = 0;
+    const timer = window.setTimeout(() => {
+      // The loader stays mounted until the portal is fully opaque. Two frames
+      // give section 01 and its WebGL canvas time to paint behind that cover.
+      setPortalCovered(true);
+      let revealStarted = false;
+      const reveal = (): void => {
+        if (revealStarted) return;
+        revealStarted = true;
+        setTransitionPhase('revealing');
+      };
+      // Background tabs may throttle requestAnimationFrame completely. The
+      // fallback keeps the state machine from getting stranded while the
+      // opaque portal still guarantees there can be no visible flash.
+      revealFallback = window.setTimeout(reveal, reducedMotion ? 50 : 240);
+      settleFrame = requestAnimationFrame(() => {
+        revealFrame = requestAnimationFrame(reveal);
+      });
+    }, reducedMotion ? PORTAL_TRANSITION_TIMING.reducedCover : PORTAL_TRANSITION_TIMING.cover);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(revealFallback);
+      cancelAnimationFrame(settleFrame);
+      cancelAnimationFrame(revealFrame);
+    };
+  }, [failed, reducedMotion, transitionPhase]);
+
+  useEffect(() => {
+    if (failed || transitionPhase !== 'revealing') return;
+    const timer = window.setTimeout(
+      () => setDismissed(true),
+      reducedMotion ? PORTAL_TRANSITION_TIMING.reducedReveal : PORTAL_TRANSITION_TIMING.reveal,
+    );
     return () => window.clearTimeout(timer);
-  }, [exiting, reducedMotion]);
+  }, [failed, reducedMotion, transitionPhase]);
+
+  useEffect(() => {
+    if (!dismissed || dismissedNotificationSent.current) return;
+    dismissedNotificationSent.current = true;
+    onDismissed();
+  }, [dismissed, onDismissed]);
+
   if (failed || dismissed) return null;
   return (
-    <div className={`loading-screen${complete ? ' is-ready' : ''}${exiting ? ' is-complete' : ''}`} style={loadingStyle} aria-busy={!complete}>
+    <div
+      className={`loading-screen${complete ? ' is-ready' : ''}${transitionPhase ? ' is-portal-transitioning' : ''}${portalCovered ? ' is-portal-covered' : ''}`}
+      data-loading-stage={transitionPhase ?? (complete ? 'ready' : 'loading')}
+      style={loadingStyle}
+      aria-busy={!complete || transitionPhase !== null}
+    >
       <div className='loading-screen__heat' aria-hidden='true' />
       <div className="loading-screen__topline">
         <span className="loading-screen__brand"><img className="loading-screen__logo" src="/brand/norka-compass-logo-512.png" width="44" height="44" alt="" aria-hidden="true" /><span>NORKA R35</span></span>
@@ -72,6 +127,7 @@ export function LoadingScreen({ sceneReady, failed, reducedMotion }: Props) {
       </div>
       <span className='sr-only' role='status' aria-live='polite'>{complete ? '3D experience ready.' : ''}</span>
       <p className="loading-screen__foot">Engineered beyond limits</p>
+      {transitionPhase ? <StoryReturnTransition phase={transitionPhase} intent='intro' /> : null}
     </div>
   );
 }

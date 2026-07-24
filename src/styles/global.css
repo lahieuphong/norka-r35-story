@@ -17,6 +17,8 @@
 * { box-sizing: border-box; }
 html { min-width: 320px; overflow-y: scroll; background: var(--bg); scrollbar-width: auto; -ms-overflow-style: auto; scroll-behavior: smooth; }
 html.is-explore-locked { overscroll-behavior: none; touch-action: none; }
+html.is-story-returning { overscroll-behavior: none; scrollbar-width: none; }
+html.is-story-returning::-webkit-scrollbar { display: none; width: 0; height: 0; }
 body { min-width: 320px; min-height: 100%; margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text); }
 html::-webkit-scrollbar { width: 12px; }
 html::-webkit-scrollbar-track { background: linear-gradient(90deg,#e8edf2 0 46%,rgba(11,34,54,.15) 46% 54%,#e8edf2 54% 100%); box-shadow: inset 1px 0 rgba(11,34,54,.08); }
