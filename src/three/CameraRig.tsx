@@ -36,6 +36,20 @@ interface CameraSnapshot {
   readonly fov: number;
 }
 
+function syncCameraToRig(
+  camera: THREE.Camera,
+  rig: CameraRigValues,
+  controls: OrbitControlsImpl | null,
+): void {
+  camera.position.copy(rig.position);
+  camera.lookAt(rig.target);
+  if (camera instanceof THREE.PerspectiveCamera && Math.abs(camera.fov - rig.fov) > 0.0001) {
+    camera.fov = rig.fov;
+    camera.updateProjectionMatrix();
+  }
+  if (controls) controls.target.copy(rig.target);
+}
+
 const DOOR_OPEN_DURATION = 1.05;
 const DOOR_CLOSE_DURATION = 1.45;
 const ENTRY_APPROACH_DURATION = 1.25;
@@ -77,6 +91,14 @@ export function CameraRig({
   const shots = getShotSet(compact, landscape);
   const waypoints = getWaypointSet(compact);
   const interiorShots = getInteriorTransitionSet(compact, landscape);
+  const storyShots = useRef(shots);
+  const storyWaypoints = useRef(waypoints);
+  const storyReducedMotion = useRef(reducedMotion);
+  if (phase === 'story') {
+    storyShots.current = shots;
+    storyWaypoints.current = waypoints;
+    storyReducedMotion.current = reducedMotion;
+  }
   const rigRef = useRef<CameraRigValues>({
     position: new THREE.Vector3(...shots[INITIAL_STORY_SHOT].position),
     target: new THREE.Vector3(...shots[INITIAL_STORY_SHOT].target),
@@ -86,8 +108,21 @@ export function CameraRig({
   const activeTween = useRef<gsap.core.Timeline | null>(null);
   const exteriorSnapshot = useRef<CameraSnapshot | null>(null);
 
-  useScrollStory({ ready: modelReady, reducedMotion, rig, shots, waypoints, onSceneChange: invalidate });
+  // The scroll-story context owns GSAP tweens on this same rig. Freeze its
+  // responsive inputs while Explore is active so an orientation or preference
+  // change cannot rebuild that context underneath an entry/exit transition.
+  useScrollStory({
+    ready: modelReady,
+    reducedMotion: storyReducedMotion.current,
+    rig,
+    shots: storyShots.current,
+    waypoints: storyWaypoints.current,
+    onSceneChange: invalidate,
+  });
 
+  // A running route owns the shot profile and motion preference captured when
+  // it starts. Resizing, rotating, or changing reduced-motion mid-transition
+  // must not kill the timeline and send the camera back toward its approach.
   useEffect(() => {
     activeTween.current?.kill();
     activeTween.current = null;
@@ -126,8 +161,7 @@ export function CameraRig({
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.doorProgress = 1;
-          const currentControls = controlsRef.current;
-          if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
+          syncCameraToRig(camera, rig, controlsRef.current);
           if (viewPhase === 'openingExteriorDoor') onExteriorDoorOpenComplete();
           else if (viewPhase === 'openingInteriorDoor') onInteriorDoorOpenComplete();
           else onInteriorExitDoorOpenComplete();
@@ -156,8 +190,7 @@ export function CameraRig({
         onComplete: () => {
           interactionRig.doorProgress = 1;
           interactionRig.glassOpacity = 1;
-          const currentControls = controlsRef.current;
-          if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
+          syncCameraToRig(camera, rig, controlsRef.current);
           onInteriorEnterComplete();
         },
       })
@@ -185,8 +218,7 @@ export function CameraRig({
         onComplete: () => {
           interactionRig.doorProgress = 0;
           interactionRig.glassOpacity = 1;
-          const currentControls = controlsRef.current;
-          if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
+          syncCameraToRig(camera, rig, controlsRef.current);
           if (viewPhase === 'closingInteriorDoor') onInteriorDoorCloseComplete();
           else onExteriorDoorCloseComplete();
         },
@@ -212,8 +244,7 @@ export function CameraRig({
         onComplete: () => {
           interactionRig.doorProgress = 1;
           interactionRig.glassOpacity = 1;
-          const currentControls = controlsRef.current;
-          if (currentControls) { currentControls.target.copy(rig.target); currentControls.update(); }
+          syncCameraToRig(camera, rig, controlsRef.current);
           exteriorSnapshot.current = null;
           onInteriorExitComplete();
         },
@@ -236,7 +267,7 @@ export function CameraRig({
       interactionRig.steeringAngle = 0;
     }
     return () => { activeTween.current?.kill(); activeTween.current = null; };
-  }, [camera, controlsRef, interactionRig, interiorShots, invalidate, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, reducedMotion, rig, shots, viewPhase]);
+  }, [camera, controlsRef, interactionRig, invalidate, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, rig, viewPhase]);
 
   useEffect(() => () => {
     interactionRig.doorProgress = 0;

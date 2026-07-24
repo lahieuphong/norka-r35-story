@@ -1,4 +1,4 @@
-import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
+import { Component, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -9,7 +9,8 @@ import { CarModel, releaseModelDecoders, type ModelReadyDetails } from './CarMod
 import { readDeviceProfile, type DeviceProfile } from './deviceProfile';
 import { isExteriorOrbitEnabled, isInteriorOrbitEnabled, isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { Lighting } from './Lighting';
-import { getShotSet, INITIAL_STORY_SHOT } from './cameraShots';
+import { getShotSet, INITIAL_STORY_SHOT, type VectorTuple } from './cameraShots';
+import { getInteriorTransitionSet } from './interiorTransitionShots';
 import { createVehicleInteractionRig } from './VehicleInteractionRig';
 
 interface Props {
@@ -72,12 +73,14 @@ const SHORT_LANDSCAPE_INTERIOR_ORBIT_LIMITS = {
 const COMPACT_INTERIOR_ORBIT_LIMITS = {
   minPolarDoorOpen: 1,
   minPolarDoorClosed: 1.04,
-  maxPolar: 1.28,
+  maxPolar: 1.42,
   minAzimuthDoorOpen: 2.48,
   minAzimuthDoorClosed: 2.9,
   maxAzimuth: 4.55,
 } as const;
 const COMPACT_INTERIOR_LOOK_DISTANCE = 0.46;
+const INTERIOR_EYE_DAMPING = 11;
+const INTERIOR_EYE_STOP_DISTANCE_SQ = 1e-6;
 function readTouchSpan(points: ReadonlyMap<number, THREE.Vector2>): number {
   let firstPoint: THREE.Vector2 | undefined;
   for (const point of points.values()) {
@@ -251,25 +254,125 @@ function CompactInteriorLookAnchor({ controlsRef, active, compact }: {
   return null;
 }
 
+/**
+ * OrbitControls normally moves the camera around its target. In the cockpit
+ * that turns a look gesture into physical movement through the roof, door, or
+ * steering wheel. Preserve OrbitControls' input and damping, but translate its
+ * target by the same correction applied to the camera after every update so
+ * the driver's eye stays seated while the viewing direction still changes.
+ */
+function InteriorEyeLock({ controlsRef, active, eyePosition, reducedMotion }: {
+  readonly controlsRef: RefObject<OrbitControlsImpl | null>;
+  readonly active: boolean;
+  readonly eyePosition: VectorTuple;
+  readonly reducedMotion: boolean;
+}) {
+  const eye = useRef(new THREE.Vector3());
+  const destination = useRef(new THREE.Vector3());
+  const correction = useRef(new THREE.Vector3());
+  const anchored = useRef(false);
+  const invalidate = useThree((state) => state.invalidate);
+
+  const lockEye = useCallback((): void => {
+    if (!anchored.current) return;
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const offset = correction.current.copy(eye.current).sub(controls.object.position);
+    if (offset.lengthSq() <= 1e-12) return;
+    controls.object.position.add(offset);
+    controls.target.add(offset);
+  }, [controlsRef]);
+
+  useLayoutEffect(() => {
+    const controls = controlsRef.current;
+    if (!active || !controls) {
+      anchored.current = false;
+      return;
+    }
+    if (!anchored.current) {
+      eye.current.copy(controls.object.position);
+      anchored.current = true;
+    }
+    destination.current.set(...eyePosition);
+    if (reducedMotion) {
+      eye.current.copy(destination.current);
+      lockEye();
+    }
+
+    // OrbitControls mutates the camera directly inside pointer and keyboard
+    // events. Correct that mutation in the same event, before another state
+    // transition or cockpit raycast can observe an orbited eye position.
+    controls.addEventListener('change', lockEye);
+    invalidate();
+    return () => controls.removeEventListener('change', lockEye);
+  }, [active, controlsRef, eyePosition, invalidate, lockEye, reducedMotion]);
+
+  useFrame((_, delta) => {
+    if (!active) return;
+    const controls = controlsRef.current;
+    if (!controls) return;
+    if (!anchored.current) {
+      eye.current.copy(controls.object.position);
+      anchored.current = true;
+      return;
+    }
+
+    const targetEye = destination.current;
+    let moving = eye.current.distanceToSquared(targetEye) > INTERIOR_EYE_STOP_DISTANCE_SQ;
+    if (!moving) {
+      eye.current.copy(targetEye);
+    } else {
+      if (reducedMotion) {
+        eye.current.copy(targetEye);
+        moving = false;
+      } else {
+        // This path is a validated segment between two seated eye points, so
+        // it can catch up after a dropped frame without approaching bodywork.
+        const frameTime = Math.min(delta, 0.25);
+        eye.current.set(
+          THREE.MathUtils.damp(eye.current.x, targetEye.x, INTERIOR_EYE_DAMPING, frameTime),
+          THREE.MathUtils.damp(eye.current.y, targetEye.y, INTERIOR_EYE_DAMPING, frameTime),
+          THREE.MathUtils.damp(eye.current.z, targetEye.z, INTERIOR_EYE_DAMPING, frameTime),
+        );
+        if (eye.current.distanceToSquared(targetEye) <= INTERIOR_EYE_STOP_DISTANCE_SQ) {
+          eye.current.copy(targetEye);
+          moving = false;
+        }
+      }
+    }
+
+    lockEye();
+    if (moving) invalidate();
+  }, -0.25);
+
+  return null;
+}
+
 // OrbitControls applies updated bounds during update(). Explicitly request one
 // when a door-state or device-profile limit changes so demand rendering clamps
 // the camera immediately, including after the close-door transition.
-function InteriorOrbitLimitSync({ controlsRef, active, minPolar, maxPolar, minAzimuth, maxAzimuth }: {
+function InteriorOrbitLimitSync({ controlsRef, active, fov, minPolar, maxPolar, minAzimuth, maxAzimuth }: {
   readonly controlsRef: RefObject<OrbitControlsImpl | null>;
   readonly active: boolean;
+  readonly fov: number;
   readonly minPolar: number;
   readonly maxPolar: number;
   readonly minAzimuth: number;
   readonly maxAzimuth: number;
 }) {
+  const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const controls = controlsRef.current;
     if (!active || !controls) return;
+    if (camera instanceof THREE.PerspectiveCamera && Math.abs(camera.fov - fov) > 0.0001) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
     controls.update();
     invalidate();
-  }, [active, controlsRef, invalidate, maxAzimuth, maxPolar, minAzimuth, minPolar]);
+  }, [active, camera, controlsRef, fov, invalidate, maxAzimuth, maxPolar, minAzimuth, minPolar]);
 
   return null;
 }
@@ -540,6 +643,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
   // geometry envelope; keep its orbit radius short enough to avoid clipping.
   const maxInteriorDistance = profile.compact ? 0.95 : 1.2;
   const maxDistance = interiorOrbit ? maxInteriorDistance : profile.isMobile ? 15 : 10.5;
+  const interiorCockpit = getInteriorTransitionSet(profile.compact, profile.landscape).cockpit;
   const handleControlsChange = useCallback((): void => {
     if (!exteriorOrbit) return;
     const controls = controlsRef.current;
@@ -674,6 +778,12 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
             rotateSpeed={interiorOrbit ? 0.42 : profile.isMobile ? 0.52 : 0.58}
             zoomSpeed={0.65}
           />
+          <InteriorEyeLock
+            controlsRef={controlsRef}
+            active={interiorOrbit}
+            eyePosition={interiorCockpit.position}
+            reducedMotion={reducedMotion}
+          />
           <CompactInteriorLookAnchor
             controlsRef={controlsRef}
             active={interiorOrbit}
@@ -682,6 +792,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
           <InteriorOrbitLimitSync
             controlsRef={controlsRef}
             active={interiorOrbit}
+            fov={interiorCockpit.fov}
             minPolar={minInteriorPolar}
             maxPolar={interiorOrbitLimits.maxPolar}
             minAzimuth={minInteriorAzimuth}
