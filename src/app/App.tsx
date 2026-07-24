@@ -154,7 +154,9 @@ export function App() {
     setViewPhase('exteriorDoorOpenAfterExit');
   }, []);
   const closeExteriorDoor = useCallback((): void => {
-    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exteriorDoorOpenAfterExit') return;
+    if (phaseRef.current !== 'explore'
+      || (viewPhaseRef.current !== 'exteriorDoorOpen'
+        && viewPhaseRef.current !== 'exteriorDoorOpenAfterExit')) return;
     viewPhaseRef.current = 'closingExteriorDoor';
     setViewPhase('closingExteriorDoor');
   }, []);

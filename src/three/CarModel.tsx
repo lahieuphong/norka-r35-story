@@ -10,12 +10,13 @@ import type { GLTFLoader } from 'three-stdlib';
 import { applyMaterialAdjustments, type ReferenceMaterialMaps } from './materialAdjustments';
 import { DoorHotspot } from './DoorHotspot';
 import { createDriverDoorAssembly } from './doorAssembly';
-import type { ExplorePhase, ExploreViewPhase } from './experienceTypes';
+import { isInteriorOrbitEnabled, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { DRIVER_DOOR_OPEN_ANGLE } from './interiorTransitionShots';
 import { computeModelNormalization, type ModelNormalization } from './modelNormalization';
 import { storyVisualState } from './storyState';
 import type { ModelTier } from './deviceProfile';
 import type { VehicleInteractionRig } from './VehicleInteractionRig';
+import { createSteeringWheelAssembly, STEERING_WHEEL_LOCAL_AXIS } from './steeringWheel';
 
 const URLS = {
   original: '/models/norka-r35-original.glb',
@@ -67,6 +68,15 @@ interface Props {
   readonly viewPhase: ExploreViewPhase;
   readonly onOpenExteriorDoor: () => void;
   readonly onReady: (details: ModelReadyDetails) => void;
+}
+
+const MAX_STEERING_ANGLE = Math.PI * 0.75;
+const STEERING_DRAG_RADIANS_PER_VIEWPORT = Math.PI * 1.6;
+
+interface SteeringDragState {
+  readonly pointerId: number;
+  readonly radiansPerPixel: number;
+  lastClientX: number;
 }
 
 const KTX2_LOADERS = new WeakMap<THREE.WebGLRenderer, KTX2Loader>();
@@ -210,6 +220,8 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
 
 export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPhase, onOpenExteriorDoor, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
+  const camera = useThree((state) => state.camera);
+  const invalidate = useThree((state) => state.invalidate);
   const modelVariant = useMemo(() => selectRuntimeVariant(renderer, modelTier), [modelTier, renderer]);
   const modelUrl = URLS[modelVariant];
   const extendLoader = useCallback((loader: GLTFLoader) => {
@@ -227,6 +239,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
     // Isolate them before applying runtime profiles or per-frame glass fades.
     isolateSceneMaterials(scene);
     const driverDoor = createDriverDoorAssembly(scene);
+    const steeringWheel = createSteeringWheelAssembly(scene);
     const normalization = computeModelNormalization(scene);
     const referenceMaps = readEmbeddedReferenceMaps(scene);
     applyMaterialAdjustments(
@@ -264,12 +277,122 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
       materialCount: materials.size,
       attribution,
       driverDoor,
+      steeringWheel,
       glassMaterials,
       ownedGeometries: [...geometries],
       ownedMaterials: [...materials],
       ownedTextures: [...textures],
     };
   }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy, modelTier]);
+  const steeringInteractive = isInteriorOrbitEnabled(phase, viewPhase);
+  const steeringDrag = useRef<SteeringDragState | null>(null);
+  const steeringRaycaster = useRef(new THREE.Raycaster());
+  const steeringPointer = useRef(new THREE.Vector2());
+  const steeringTurnQuaternion = useRef(new THREE.Quaternion());
+  useEffect(() => {
+    const canvas = renderer.domElement;
+    const ownerDocument = canvas.ownerDocument;
+
+    const finishDrag = (pointerId?: number): void => {
+      const drag = steeringDrag.current;
+      if (!drag || (pointerId !== undefined && pointerId !== drag.pointerId)) return;
+      steeringDrag.current = null;
+      if (canvas.hasPointerCapture?.(drag.pointerId)) {
+        canvas.releasePointerCapture(drag.pointerId);
+      }
+      canvas.style.removeProperty('cursor');
+    };
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (steeringDrag.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (!steeringInteractive) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      const steeringWheel = prepared.steeringWheel;
+      if (!steeringWheel) return;
+
+      const bounds = canvas.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      steeringPointer.current.set(
+        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+      );
+      camera.updateMatrixWorld();
+      steeringWheel.pivot.updateWorldMatrix(true, true);
+      steeringRaycaster.current.setFromCamera(steeringPointer.current, camera);
+      if (steeringRaycaster.current.intersectObject(steeringWheel.pivot, true).length === 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      steeringDrag.current = {
+        pointerId: event.pointerId,
+        radiansPerPixel: STEERING_DRAG_RADIANS_PER_VIEWPORT
+          / THREE.MathUtils.clamp(Math.min(bounds.width, bounds.height), 320, 900),
+        lastClientX: event.clientX,
+      };
+      canvas.style.cursor = 'grabbing';
+      canvas.setPointerCapture?.(event.pointerId);
+    };
+
+    const handlePointerMove = (event: PointerEvent): void => {
+      const drag = steeringDrag.current;
+      if (!drag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (event.pointerId !== drag.pointerId) return;
+      const deltaX = event.clientX - drag.lastClientX;
+      drag.lastClientX = event.clientX;
+      if (Math.abs(deltaX) < 0.01) return;
+      interactionRig.steeringAngle = THREE.MathUtils.clamp(
+        interactionRig.steeringAngle + deltaX * drag.radiansPerPixel,
+        -MAX_STEERING_ANGLE,
+        MAX_STEERING_ANGLE,
+      );
+      invalidate();
+    };
+
+    const handlePointerEnd = (event: PointerEvent): void => {
+      const drag = steeringDrag.current;
+      if (!drag) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (event.pointerId !== drag.pointerId) return;
+      finishDrag(event.pointerId);
+    };
+    const handleLostPointerCapture = (event: PointerEvent): void => finishDrag(event.pointerId);
+    const handleWindowBlur = (): void => finishDrag();
+    const handleVisibilityChange = (): void => {
+      if (ownerDocument.visibilityState === 'hidden') finishDrag();
+    };
+    const handleOrientationChange = (): void => finishDrag();
+
+    canvas.addEventListener('pointerdown', handlePointerDown, true);
+    canvas.addEventListener('pointermove', handlePointerMove, true);
+    canvas.addEventListener('pointerup', handlePointerEnd, true);
+    canvas.addEventListener('pointercancel', handlePointerEnd, true);
+    canvas.addEventListener('lostpointercapture', handleLostPointerCapture, true);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('orientationchange', handleOrientationChange);
+    ownerDocument.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      finishDrag();
+      canvas.removeEventListener('pointerdown', handlePointerDown, true);
+      canvas.removeEventListener('pointermove', handlePointerMove, true);
+      canvas.removeEventListener('pointerup', handlePointerEnd, true);
+      canvas.removeEventListener('pointercancel', handlePointerEnd, true);
+      canvas.removeEventListener('lostpointercapture', handleLostPointerCapture, true);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      ownerDocument.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [camera, interactionRig, invalidate, prepared.steeringWheel, renderer, steeringInteractive]);
   useLayoutEffect(() => {
     // useGLTF resolves only after textures and geometry have finished decoding,
     // so worker pools can be released without affecting the resident model.
@@ -322,6 +445,15 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
   useFrame(() => {
     if (prepared.driverDoor) {
       prepared.driverDoor.pivot.rotation.y = DRIVER_DOOR_OPEN_ANGLE * THREE.MathUtils.clamp(interactionRig.doorProgress, 0, 1);
+    }
+    if (prepared.steeringWheel) {
+      steeringTurnQuaternion.current.setFromAxisAngle(
+        STEERING_WHEEL_LOCAL_AXIS,
+        interactionRig.steeringAngle,
+      );
+      prepared.steeringWheel.pivot.quaternion
+        .copy(prepared.steeringWheel.restQuaternion)
+        .multiply(steeringTurnQuaternion.current);
     }
     const opacity = THREE.MathUtils.clamp(storyVisualState.glassOpacity * interactionRig.glassOpacity, 0, 1);
     if (Math.abs(renderedGlassOpacity.current - opacity) < 0.001) return;

@@ -69,7 +69,7 @@ Desktop views use `desktopShots`; phones and tablets in portrait up to 1024px us
 
 ## Explore mode
 
-The opening Explore CTA disables story ScrollTriggers without resetting their visual state, locks the page at its current scroll offset, eases to the opening Explore composition, then enables OrbitControls. Pan is disabled, zoom is bounded, and polar limits prevent moving below the floor. Drag/touch, wheel/pinch, arrow keys, and `+`/`-` are supported. Exit disables controls, restores the opening story shot, restores the same scroll offset, and re-enables ScrollTriggers without jumping to another section.
+The opening Explore CTA disables story ScrollTriggers without resetting their visual state, locks the page at its current scroll offset, eases to the opening Explore composition, then enables OrbitControls. Exterior orbit, bounded right-button/two-finger pan, wheel/pinch zoom, arrow keys, and `+`/`-` are supported. Selecting the driver-door hotspot opens the door and offers separate actions to enter the cabin or close it again. Inside, viewport- and door-aware orbit limits keep the camera within the cockpit, while mouse and touch users can drag the steering wheel directly. Exit disables controls, resets the interactive vehicle state, restores the opening story shot and saved scroll offset, and re-enables ScrollTriggers without jumping to another section.
 
 ## Development camera HUD
 
@@ -132,14 +132,14 @@ python3 scripts/generate-studio-hdr.py
 - `yarn typecheck`, `yarn build`, `yarn dev`, and `yarn preview` completed successfully.
 - Development and production servers returned the HTML entry, local HDR, and real GLB with HTTP 200.
 - The untouched reference GLB remains byte-identical to `source/Norka Varis R35.glb` in the supplied asset archive. SHA-256: `a377887ccb248ef0147b2e318f84c9a64dd38c0bdead96209cdcffde63b4660f`.
-- All three mobile variants retain 1,267,536 render vertices, all 64 materials, all 50 runtime textures, original bounds, and transparent material modes. Their static hierarchy is 78 nodes, 78 meshes, and 78 primitives, with 11 instanced batches representing 38 copies. Desktop variants remain unchanged.
+- All three mobile variants retain 1,267,536 render vertices, all 64 materials, all 50 runtime textures, original bounds, and transparent material modes. Their optimized hierarchy is 131 nodes, 101 meshes, and 101 primitives, including the protected driver-door and steering-wheel subtrees, with 11 instanced batches representing 38 copies. Desktop variants remain unchanged.
 - The mobile artifacts and model-only GPU estimates are:
 
   | Variant | GLB bytes | Texture GPU | Geometry GPU | Combined GPU |
   | --- | ---: | ---: | ---: | ---: |
-  | `mobile` | 9,673,736 | 19.03 MiB | 6.87 MiB | 25.90 MiB |
-  | `mobile-low` | 7,595,924 | 11.03 MiB | 6.87 MiB | 17.90 MiB |
-  | `mobile-fallback` | 5,425,788 | 15.68 MiB | 6.87 MiB | 22.55 MiB |
+  | `mobile` | 9,725,904 | 19.03 MiB | 6.87 MiB | 25.90 MiB |
+  | `mobile-low` | 7,648,092 | 11.03 MiB | 6.87 MiB | 17.90 MiB |
+  | `mobile-fallback` | 5,477,956 | 15.68 MiB | 6.87 MiB | 22.55 MiB |
 
   These are estimates for model resources only, not live WebGL/process memory; they exclude framebuffers, HDR/PMREM, shadows, workers, caches, compositor surfaces, and driver overhead. For comparison, the prior mobile model was 36.39 MiB combined and the existing desktop PNG fallback is 59.37 MiB combined.
 - `mobile` and `mobile-low` each contain 44 KTX2 textures (32 UASTC and 12 ETC1S) plus 6 tiny PNG maps. `mobile-fallback` contains 50 standard PNG textures and makes no Basis request.

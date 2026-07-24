@@ -165,7 +165,7 @@ async function optimizeMobileGeometry(document) {
   }));
   isolateTransparentMeshInstances(document);
   await document.transform(instance({ min: 2 }));
-  const protectedDoorNodes = detachDriverDoorNodes(document);
+  const protectedNodes = detachInteractiveNodes(document);
   await document.transform(
     // Cleanup stays deferred until the protected subtrees are reattached;
     // otherwise the intermediate orphan nodes would be pruned.
@@ -176,35 +176,35 @@ async function optimizeMobileGeometry(document) {
         .every((primitive) => primitive.getMaterial()?.getAlphaMode() === 'OPAQUE') ?? false,
     }),
   );
-  restoreDriverDoorNodes(document, protectedDoorNodes);
+  restoreInteractiveNodes(document, protectedNodes);
   // `cleanup:false` above intentionally retains orphaned pre-join resources
-  // until the door is safely reattached. They can now be discarded before
+  // until the interactive nodes are safely reattached. They can now be discarded before
   // quantization inspects every remaining primitive.
   await document.transform(prune({ keepAttributes: true, keepIndices: true, keepLeaves: false }));
 }
 
-const protectedDriverDoorNodeNames = ['DOOR_INT_L_158', 'DOOR_INT_L_anim_160'];
+const protectedInteractiveNodeNames = ['DOOR_INT_L_158', 'DOOR_INT_L_anim_160', 'STEER_HR_232'];
 
-function detachDriverDoorNodes(document) {
+function detachInteractiveNodes(document) {
   const root = document.getRoot();
-  return protectedDriverDoorNodeNames.map((name) => {
+  return protectedInteractiveNodeNames.map((name) => {
     const node = root.listNodes().find((candidate) => candidate.getName() === name);
     const parent = node?.getParentNode();
-    if (!node || !parent) throw new Error(`The source model is missing protected driver-door node ${name}.`);
+    if (!node || !parent) throw new Error(`The source model is missing protected interactive node ${name}.`);
     const worldMatrix = [...node.getWorldMatrix()];
     parent.removeChild(node);
     return { node, worldMatrix };
   });
 }
 
-function restoreDriverDoorNodes(document, protectedNodes) {
+function restoreInteractiveNodes(document, protectedNodes) {
   const scene = document.getRoot().listScenes()[0];
   if (!scene) throw new Error('The source model is missing its primary scene.');
   for (const { node, worldMatrix } of protectedNodes) {
-    // Mobile flatten/join is intentionally run while these two subtrees are
-    // detached. Reattaching with their previous world matrices preserves the
-    // exact authored inner door, while still allowing every other static mesh
-    // to use the low-draw-call mobile pipeline.
+    // Mobile flatten/join is intentionally run while the animated door and
+    // steering subtrees are detached. Reattaching with their previous world
+    // matrices preserves the authored pivots while every other static mesh
+    // still uses the low-draw-call mobile pipeline.
     node.setMatrix(worldMatrix);
     scene.addChild(node);
   }

@@ -17,7 +17,7 @@ function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase): string {
   if (phase === 'entering') return 'Preparing interactive camera';
   if (phase === 'exiting') return 'Returning to the story';
   if (viewPhase === 'openingExteriorDoor') return 'Opening driver door';
-  if (viewPhase === 'exteriorDoorOpen') return 'Door open · select Enter car when ready';
+  if (viewPhase === 'exteriorDoorOpen') return 'Door open · enter the car or close the door';
   if (viewPhase === 'exteriorDoorOpenAfterExit') return 'Outside the car · close the driver door when ready';
   if (viewPhase === 'closingExteriorDoor') return 'Closing driver door';
   if (viewPhase === 'enteringInterior') return 'Entering cockpit';
@@ -118,21 +118,18 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
     || viewPhase === 'openingInteriorDoor'
     || viewPhase === 'openingDoorForExit'
     || viewPhase === 'exitingInterior';
-  const actionLabel = exteriorDoorOpenReady ? 'Enter car'
-    : exteriorDoorOpenAfterExitReady ? 'Close door'
-      : viewPhase === 'openingExteriorDoor' ? 'Opening door'
-        : viewPhase === 'enteringInterior' ? 'Entering cockpit'
-          : viewPhase === 'closingInteriorDoor' ? 'Closing door'
-            : viewPhase === 'openingInteriorDoor' || viewPhase === 'openingDoorForExit' ? 'Opening door'
-              : viewPhase === 'exitingInterior' ? 'Returning outside'
-                : viewPhase === 'closingExteriorDoor' ? 'Closing door'
-                  : phase === 'exiting' ? 'Exiting 3D' : 'Exit 3D';
-  const action = exteriorDoorOpenReady ? onEnterInterior
-    : exteriorDoorOpenAfterExitReady ? onCloseExteriorDoor
-      : onExit;
-  const actionIcon: ExploreActionIconName = exteriorDoorOpenReady ? 'enter'
-    : transitioningInterior ? 'pending'
-      : 'close';
+  const actionLabel = exteriorDoorOpenAfterExitReady ? 'Close door'
+    : viewPhase === 'openingExteriorDoor' ? 'Opening door'
+      : viewPhase === 'enteringInterior' ? 'Entering cockpit'
+        : viewPhase === 'closingInteriorDoor' ? 'Closing door'
+          : viewPhase === 'openingInteriorDoor' || viewPhase === 'openingDoorForExit' ? 'Opening door'
+            : viewPhase === 'exitingInterior' ? 'Returning outside'
+              : viewPhase === 'closingExteriorDoor' ? 'Closing door'
+                : phase === 'exiting' ? 'Exiting 3D' : 'Exit 3D';
+  const action = exteriorDoorOpenAfterExitReady ? onCloseExteriorDoor
+    : onExit;
+  const actionIcon: ExploreActionIconName = transitioningInterior ? 'pending'
+    : 'close';
   return (
     <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`}>
       <div ref={statusRef} className="explore-overlay__status" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}><span className="explore-overlay__dot" aria-hidden="true" /><span>{status}</span></div>
@@ -145,6 +142,15 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
             </button>
             <button ref={actionRef} type="button" className="explore-overlay__exit" onClick={onExitInterior}>
               <span>Quit interior</span><ExploreActionIcon name="quit" />
+            </button>
+          </>
+        ) : exteriorDoorOpenReady ? (
+          <>
+            <button ref={actionRef} type="button" className="explore-overlay__exit" onClick={onEnterInterior}>
+              <span>Enter car</span><ExploreActionIcon name="enter" />
+            </button>
+            <button type="button" className="explore-overlay__exit" onClick={onCloseExteriorDoor}>
+              <span>Close door</span><ExploreActionIcon name="close" />
             </button>
           </>
         ) : (

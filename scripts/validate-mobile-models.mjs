@@ -84,10 +84,11 @@ for (const [variant, file] of Object.entries(files).slice(1)) {
   assert.deepEqual(metrics.materialNames, original.materialNames, `${variant}: material names changed`);
   assert.deepEqual(metrics.alphaModes, original.alphaModes, `${variant}: alpha modes changed`);
   assert.equal(metrics.textures, 50, `${variant}: optimized texture set changed`);
-  assert.ok(metrics.primitiveDefinitions <= 100, `${variant}: draw-call reduction regressed`);
+  assert.ok(metrics.primitiveDefinitions <= 102, `${variant}: draw-call reduction regressed`);
   assert.ok(metrics.extensions.has('EXT_mesh_gpu_instancing'), `${variant}: instancing extension missing`);
   assert.ok(metrics.nodeNames.has('DOOR_INT_L_158'), `${variant}: protected driver-door interior missing`);
   assert.ok(metrics.nodeNames.has('DOOR_INT_L_anim_160'), `${variant}: protected driver-door actuator missing`);
+  assert.ok(metrics.nodeNames.has('STEER_HR_232'), `${variant}: protected steering-wheel pivot missing`);
   assertBoundsClose(metrics.bounds, original.bounds, variant);
 }
 

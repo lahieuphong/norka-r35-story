@@ -48,6 +48,36 @@ const VIEWER_TOUCHES = {
   ONE: THREE.TOUCH.ROTATE,
   TWO: THREE.TOUCH.DOLLY_PAN,
 };
+// Cabin geometry sits very close to the camera, so each aspect profile needs
+// its own safe pitch range. With the driver's door open the camera may move
+// through that doorway; once it closes, stop before the camera reaches the
+// door skin or roof trim. The opposite look angle still crosses PI so the
+// whole open door can be seen from across the cockpit.
+const WIDE_INTERIOR_ORBIT_LIMITS = {
+  minPolarDoorOpen: 1.18,
+  minPolarDoorClosed: 1.24,
+  maxPolar: 1.46,
+  minAzimuthDoorOpen: 2.48,
+  minAzimuthDoorClosed: 2.9,
+  maxAzimuth: 4.12,
+} as const;
+const SHORT_LANDSCAPE_INTERIOR_ORBIT_LIMITS = {
+  minPolarDoorOpen: 1.18,
+  minPolarDoorClosed: 1.24,
+  maxPolar: 1.34,
+  minAzimuthDoorOpen: 2.48,
+  minAzimuthDoorClosed: 2.9,
+  maxAzimuth: 3.8,
+} as const;
+const COMPACT_INTERIOR_ORBIT_LIMITS = {
+  minPolarDoorOpen: 1,
+  minPolarDoorClosed: 1.04,
+  maxPolar: 1.28,
+  minAzimuthDoorOpen: 2.48,
+  minAzimuthDoorClosed: 2.9,
+  maxAzimuth: 4.55,
+} as const;
+const COMPACT_INTERIOR_LOOK_DISTANCE = 0.46;
 function readTouchSpan(points: ReadonlyMap<number, THREE.Vector2>): number {
   let firstPoint: THREE.Vector2 | undefined;
   for (const point of points.values()) {
@@ -169,6 +199,77 @@ function ControlsInteractionReset({ controlsRef, interactive }: {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [clearMomentum]);
+
+  return null;
+}
+
+// A portrait frustum crops the door long before a dashboard-centered orbit can
+// reach it. Move only the orbit anchor nearer to the driver's head so compact
+// devices behave like a look-around camera while preserving the entry shot.
+function CompactInteriorLookAnchor({ controlsRef, active, compact }: {
+  readonly controlsRef: RefObject<OrbitControlsImpl | null>;
+  readonly active: boolean;
+  readonly compact: boolean;
+}) {
+  const invalidate = useThree((state) => state.invalidate);
+  const direction = useRef(new THREE.Vector3());
+  const anchored = useRef(false);
+  const previousDistance = useRef(COMPACT_INTERIOR_LOOK_DISTANCE);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!active || !controls) {
+      anchored.current = false;
+      return;
+    }
+
+    controls.object.getWorldDirection(direction.current);
+    if (compact) {
+      if (anchored.current) return;
+      const currentDistance = controls.getDistance();
+      if (currentDistance > COMPACT_INTERIOR_LOOK_DISTANCE + 0.05) {
+        previousDistance.current = currentDistance;
+      }
+      controls.target
+        .copy(controls.object.position)
+        .addScaledVector(direction.current, COMPACT_INTERIOR_LOOK_DISTANCE);
+      controls.update();
+      anchored.current = true;
+      invalidate();
+      return;
+    }
+
+    if (!anchored.current) return;
+    controls.target
+      .copy(controls.object.position)
+      .addScaledVector(direction.current, Math.max(previousDistance.current, COMPACT_INTERIOR_LOOK_DISTANCE));
+    controls.update();
+    anchored.current = false;
+    invalidate();
+  }, [active, compact, controlsRef, invalidate]);
+
+  return null;
+}
+
+// OrbitControls applies updated bounds during update(). Explicitly request one
+// when a door-state or device-profile limit changes so demand rendering clamps
+// the camera immediately, including after the close-door transition.
+function InteriorOrbitLimitSync({ controlsRef, active, minPolar, maxPolar, minAzimuth, maxAzimuth }: {
+  readonly controlsRef: RefObject<OrbitControlsImpl | null>;
+  readonly active: boolean;
+  readonly minPolar: number;
+  readonly maxPolar: number;
+  readonly minAzimuth: number;
+  readonly maxAzimuth: number;
+}) {
+  const invalidate = useThree((state) => state.invalidate);
+
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!active || !controls) return;
+    controls.update();
+    invalidate();
+  }, [active, controlsRef, invalidate, maxAzimuth, maxPolar, minAzimuth, minPolar]);
 
   return null;
 }
@@ -422,8 +523,23 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
   const exteriorOrbit = isExteriorOrbitEnabled(phase, viewPhase);
   const interiorOrbit = isInteriorOrbitEnabled(phase, viewPhase);
   const interactive = isStableExploreView(phase, viewPhase);
+  const interiorOrbitLimits = profile.compact
+    ? COMPACT_INTERIOR_ORBIT_LIMITS
+    : profile.landscape
+      ? SHORT_LANDSCAPE_INTERIOR_ORBIT_LIMITS
+      : WIDE_INTERIOR_ORBIT_LIMITS;
+  const interiorDoorOpen = phase === 'explore' && viewPhase === 'interiorDoorOpen';
+  const minInteriorPolar = interiorDoorOpen
+    ? interiorOrbitLimits.minPolarDoorOpen
+    : interiorOrbitLimits.minPolarDoorClosed;
+  const minInteriorAzimuth = interiorDoorOpen
+    ? interiorOrbitLimits.minAzimuthDoorOpen
+    : interiorOrbitLimits.minAzimuthDoorClosed;
   const minDistance = interiorOrbit ? 0.45 : profile.isMobile ? 3.6 : 2.9;
-  const maxDistance = interiorOrbit ? 1.2 : profile.isMobile ? 15 : 10.5;
+  // A compact viewport's transition shot is already inside the dashboard's
+  // geometry envelope; keep its orbit radius short enough to avoid clipping.
+  const maxInteriorDistance = profile.compact ? 0.95 : 1.2;
+  const maxDistance = interiorOrbit ? maxInteriorDistance : profile.isMobile ? 15 : 10.5;
   const handleControlsChange = useCallback((): void => {
     if (!exteriorOrbit) return;
     const controls = controlsRef.current;
@@ -465,8 +581,8 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
   }, [exteriorOrbit, interactive]);
   const canvasLabel = interiorOrbit
     ? profile.isMobile
-      ? 'Interactive vehicle cockpit. Drag one finger to look around.'
-      : 'Interactive vehicle cockpit. Use arrow keys or drag to look around.'
+      ? 'Interactive vehicle cockpit. Drag one finger to look around, or drag the steering wheel directly to turn it.'
+      : 'Interactive vehicle cockpit. Use arrow keys or drag to look around, or drag the steering wheel directly to turn it.'
     : profile.isMobile
       ? 'Interactive 3D vehicle viewer. Drag one finger to orbit, and use two fingers to move and zoom.'
       : 'Interactive 3D vehicle viewer. Drag with the left mouse button to orbit, drag with the right mouse button to pan, and use the wheel to zoom.';
@@ -551,12 +667,25 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
             touches={VIEWER_TOUCHES}
             minDistance={minDistance}
             maxDistance={maxDistance}
-            minPolarAngle={interiorOrbit ? 0.82 : 0.34}
-            maxPolarAngle={interiorOrbit ? 1.68 : Math.PI * 0.49}
-            minAzimuthAngle={interiorOrbit ? 2.48 : -Infinity}
-            maxAzimuthAngle={interiorOrbit ? 3.13 : Infinity}
+            minPolarAngle={interiorOrbit ? minInteriorPolar : 0.34}
+            maxPolarAngle={interiorOrbit ? interiorOrbitLimits.maxPolar : Math.PI * 0.49}
+            minAzimuthAngle={interiorOrbit ? minInteriorAzimuth : -Infinity}
+            maxAzimuthAngle={interiorOrbit ? interiorOrbitLimits.maxAzimuth : Infinity}
             rotateSpeed={interiorOrbit ? 0.42 : profile.isMobile ? 0.52 : 0.58}
             zoomSpeed={0.65}
+          />
+          <CompactInteriorLookAnchor
+            controlsRef={controlsRef}
+            active={interiorOrbit}
+            compact={profile.compact}
+          />
+          <InteriorOrbitLimitSync
+            controlsRef={controlsRef}
+            active={interiorOrbit}
+            minPolar={minInteriorPolar}
+            maxPolar={interiorOrbitLimits.maxPolar}
+            minAzimuth={minInteriorAzimuth}
+            maxAzimuth={interiorOrbitLimits.maxAzimuth}
           />
         </Canvas>
       </CanvasBoundary>

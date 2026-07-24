@@ -233,6 +233,7 @@ export function CameraRig({
       exteriorSnapshot.current = null;
       interactionRig.doorProgress = 0;
       interactionRig.glassOpacity = 1;
+      interactionRig.steeringAngle = 0;
     }
     return () => { activeTween.current?.kill(); activeTween.current = null; };
   }, [camera, controlsRef, interactionRig, interiorShots, invalidate, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, reducedMotion, rig, shots, viewPhase]);
@@ -240,6 +241,7 @@ export function CameraRig({
   useEffect(() => () => {
     interactionRig.doorProgress = 0;
     interactionRig.glassOpacity = 1;
+    interactionRig.steeringAngle = 0;
   }, [interactionRig]);
 
   useFrame(() => {
