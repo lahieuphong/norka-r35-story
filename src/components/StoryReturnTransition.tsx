@@ -73,7 +73,6 @@ export function StoryReturnTransition({ phase, intent = 'return' }: Props) {
           <i className='story-return-transition__ring story-return-transition__ring--inner' />
           <span className='story-return-transition__core'>
             <img src='/brand/norka-compass-logo-512.png' width='44' height='44' alt='' />
-            <b>01</b>
           </span>
         </span>
         <span className='story-return-transition__scan' />

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { subscribeStoryProgress } from '../three/storyProgress';
 
 interface Props { readonly exploreActive: boolean; }
@@ -15,8 +15,10 @@ const NAV_ITEMS = [
 
 export function Header({ exploreActive }: Props) {
   const indicatorRef = useRef<HTMLDivElement>(null);
+  const wordmarkTextRef = useRef<HTMLSpanElement>(null);
   const indicatorStateRef = useRef<IndicatorState>({ current: 1, total: 12 });
   const [indicator, setIndicator] = useState<IndicatorState>(indicatorStateRef.current);
+  const [hideWordmarkText, setHideWordmarkText] = useState(false);
 
   useEffect(() => subscribeStoryProgress(({ progress, current, total }) => {
     const visualProgress = (1 + progress * (total - 1)) / total;
@@ -27,11 +29,75 @@ export function Header({ exploreActive }: Props) {
     setIndicator(indicatorStateRef.current);
   }), []);
 
+  useLayoutEffect(() => {
+    if (!exploreActive) {
+      setHideWordmarkText(false);
+      return;
+    }
+
+    const wordmarkText = wordmarkTextRef.current;
+    const actions = document.querySelector<HTMLElement>('.explore-overlay__actions');
+    if (!wordmarkText || !actions) {
+      setHideWordmarkText(false);
+      return;
+    }
+
+    let active = true;
+    let measurementQueued = false;
+    const measureCollision = (): void => {
+      const textRect = wordmarkText.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      const verticallyAligned = textRect.bottom > actionsRect.top && textRect.top < actionsRect.bottom;
+      const overlapsWithSafetyGap = textRect.right + 12 > actionsRect.left
+        && textRect.left < actionsRect.right;
+      const shouldHide = verticallyAligned && overlapsWithSafetyGap;
+      setHideWordmarkText((current) => current === shouldHide ? current : shouldHide);
+    };
+    const scheduleMeasurement = (): void => {
+      if (measurementQueued) return;
+      measurementQueued = true;
+      queueMicrotask(() => {
+        measurementQueued = false;
+        if (active) measureCollision();
+      });
+    };
+
+    measureCollision();
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleMeasurement);
+    const mutationObserver = typeof MutationObserver === 'undefined'
+      ? null
+      : new MutationObserver(scheduleMeasurement);
+    resizeObserver?.observe(actions);
+    resizeObserver?.observe(wordmarkText);
+    resizeObserver?.observe(document.documentElement);
+    mutationObserver?.observe(actions, { attributes: true, childList: true, characterData: true, subtree: true });
+    actions.addEventListener('animationend', scheduleMeasurement);
+    window.addEventListener('resize', scheduleMeasurement, { passive: true });
+    window.visualViewport?.addEventListener('resize', scheduleMeasurement, { passive: true });
+
+    return () => {
+      active = false;
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      actions.removeEventListener('animationend', scheduleMeasurement);
+      window.removeEventListener('resize', scheduleMeasurement);
+      window.visualViewport?.removeEventListener('resize', scheduleMeasurement);
+    };
+  }, [exploreActive]);
+
   return (
     <header className={`site-header${exploreActive ? ' is-muted' : ''}`} inert={exploreActive}>
       <a className='wordmark' href='#explore' aria-label='NORKA R35 — back to the beginning'>
         <img className='wordmark__logo' src='/brand/norka-compass-logo-512.png' width='44' height='44' alt='' aria-hidden='true' />
-        <span className='wordmark__text'><span>NORKA</span><strong>R35</strong></span>
+        <span
+          ref={wordmarkTextRef}
+          className='wordmark__text'
+          style={{ opacity: hideWordmarkText ? 0 : 1, visibility: hideWordmarkText ? 'hidden' : 'visible' }}
+          data-controls-occluded={hideWordmarkText || undefined}
+          aria-hidden={hideWordmarkText || undefined}
+        ><span>NORKA</span><strong>R35</strong></span>
       </a>
       <nav aria-label='Story chapters'>
         {NAV_ITEMS.map((item) => {
