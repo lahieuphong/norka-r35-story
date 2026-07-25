@@ -131,26 +131,26 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
   const actionIcon: ExploreActionIconName = transitioningInterior ? 'pending'
     : 'close';
   return (
-    <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`}>
-      <div ref={statusRef} className="explore-overlay__status" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}><span className="explore-overlay__dot" aria-hidden="true" /><span>{status}</span></div>
+    <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`} aria-label="Interactive 3D controls">
+      <div ref={statusRef} className="explore-overlay__announcer sr-only" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}>{status}</div>
       <div className="explore-overlay__reticle" aria-hidden="true"><span /><span /></div>
-      <div className="explore-overlay__actions">
+      <div className="explore-overlay__actions" data-action-layout={stableInterior || exteriorDoorOpenReady ? 'pair' : 'single'} aria-busy={!interactive || undefined}>
         {stableInterior ? (
           <>
-            <button ref={openDoorRef} type="button" className="explore-overlay__exit" onClick={interiorReady ? onOpenInteriorDoor : onCloseInteriorDoor}>
-              <span>{interiorReady ? 'Open door' : 'Close door'}</span><ExploreActionIcon name={interiorReady ? 'open' : 'close'} />
+            <button ref={openDoorRef} type="button" className="explore-overlay__exit" data-tone="primary" onClick={interiorReady ? onOpenInteriorDoor : onCloseInteriorDoor}>
+              <span className="explore-overlay__action-label">{interiorReady ? 'Open door' : 'Close door'}</span><ExploreActionIcon name={interiorReady ? 'open' : 'close'} />
             </button>
-            <button ref={actionRef} type="button" className="explore-overlay__exit" onClick={onExitInterior}>
-              <span>Quit interior</span><ExploreActionIcon name="quit" />
+            <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="secondary" onClick={onExitInterior}>
+              <span className="explore-overlay__action-label">Quit interior</span><ExploreActionIcon name="quit" />
             </button>
           </>
         ) : exteriorDoorOpenReady ? (
           <>
-            <button ref={actionRef} type="button" className="explore-overlay__exit" onClick={onEnterInterior}>
-              <span>Enter car</span><ExploreActionIcon name="enter" />
+            <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="primary" onClick={onEnterInterior}>
+              <span className="explore-overlay__action-label">Enter car</span><ExploreActionIcon name="enter" />
             </button>
-            <button type="button" className="explore-overlay__exit" onClick={onCloseExteriorDoor}>
-              <span>Close door</span><ExploreActionIcon name="close" />
+            <button type="button" className="explore-overlay__exit" data-tone="secondary" onClick={onCloseExteriorDoor}>
+              <span className="explore-overlay__action-label">Close door</span><ExploreActionIcon name="close" />
             </button>
           </>
         ) : (
@@ -158,10 +158,12 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
             ref={actionRef}
             type="button"
             className="explore-overlay__exit"
+            data-tone={!interactive ? 'pending' : exteriorDoorOpenAfterExitReady ? 'primary' : 'utility'}
             onClick={action}
             disabled={!interactive}
+            aria-busy={!interactive || undefined}
           >
-            <span>{actionLabel}</span><ExploreActionIcon name={actionIcon} />
+            <span className="explore-overlay__action-label">{actionLabel}</span><ExploreActionIcon name={actionIcon} />
           </button>
         )}
       </div>
