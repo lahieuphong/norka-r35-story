@@ -18,6 +18,9 @@
 }
 * { box-sizing: border-box; }
 html { min-width: 320px; overflow-y: scroll; background: var(--bg); scrollbar-width: auto; -ms-overflow-style: auto; scroll-behavior: smooth; }
+html.is-loading-locked { overflow: hidden; overscroll-behavior: none; scrollbar-gutter: auto; scrollbar-width: none; touch-action: none; }
+html.is-loading-locked body { overflow: hidden; overscroll-behavior: none; }
+html.is-loading-locked::-webkit-scrollbar { display: none; width: 0; height: 0; }
 html.is-explore-locked { overscroll-behavior: none; touch-action: none; }
 html.is-story-returning { overscroll-behavior: none; scrollbar-width: none; }
 html.is-story-returning::-webkit-scrollbar { display: none; width: 0; height: 0; }

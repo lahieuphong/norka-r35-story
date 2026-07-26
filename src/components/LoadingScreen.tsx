@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { useProgress } from '@react-three/drei';
 import { PORTAL_TRANSITION_TIMING, StoryReturnTransition, type StoryReturnPhase } from './StoryReturnTransition';
 interface Props {
@@ -35,6 +35,16 @@ export function LoadingScreen({ sceneReady, failed, reducedMotion, onDismissed }
     '--loading-heat-blur': `${(0.15 + heatIntensity * 1.15).toFixed(2)}rem`,
     backgroundColor: portalCovered ? 'transparent' : undefined,
   };
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (failed || dismissed) {
+      root.classList.remove('is-loading-locked');
+      return;
+    }
+    root.classList.add('is-loading-locked');
+    return () => root.classList.remove('is-loading-locked');
+  }, [dismissed, failed]);
 
   useEffect(() => {
     if (failed || displayedPercentage >= requestedPercentage) return;
