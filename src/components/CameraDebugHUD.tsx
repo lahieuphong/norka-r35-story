@@ -5,7 +5,7 @@ function read(): Values { return { position: cameraDebugSnapshot.position.toArra
 const fmt = (value: number): string => value.toFixed(3);
 async function copyText(text: string): Promise<void> {
   if (navigator.clipboard) { await navigator.clipboard.writeText(text); return; }
-  const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+  const area = document.createElement('textarea'); area.dataset.nativeSelectionBuffer = ''; area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
 }
 export default function CameraDebugHUD() {
   const [visible, setVisible] = useState(false);

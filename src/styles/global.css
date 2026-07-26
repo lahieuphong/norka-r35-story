@@ -17,6 +17,9 @@
   --page-pad: clamp(1.25rem,4vw,4.75rem);
 }
 * { box-sizing: border-box; }
+body,body *,body *::before,body *::after { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+body :is(a,img,svg,canvas) { -webkit-user-drag: none; }
+body [data-native-selection-buffer] { -webkit-user-select: text; user-select: text; }
 html { min-width: 320px; overflow-y: scroll; background: var(--bg); scrollbar-width: auto; -ms-overflow-style: auto; scroll-behavior: smooth; }
 html.is-loading-locked { overflow: hidden; overscroll-behavior: none; scrollbar-gutter: auto; scrollbar-width: none; touch-action: none; }
 html.is-loading-locked body { overflow: hidden; overscroll-behavior: none; }
@@ -37,7 +40,7 @@ html::-webkit-scrollbar-corner { background: var(--bg); }
 }
 button,a { font: inherit; }
 a,button { color: inherit; }
-::selection { background: var(--accent); color: #fff; }
+body ::selection { background: transparent; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .skip-link { position: fixed; z-index: 200; top: .75rem; left: .75rem; padding: .75rem 1rem; background: #fff; color: #08090b; transform: translateY(-160%); transition: transform 180ms ease; }

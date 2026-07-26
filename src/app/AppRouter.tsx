@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
+import { RestrictedActionToast } from '../components/RestrictedActionToast';
 import { NotFoundPage } from '../pages/NotFoundPage';
 import { App } from './App';
 
@@ -32,7 +33,12 @@ export function AppRouter() {
     return () => document.documentElement.classList.remove('is-not-found');
   }, [experienceRoute]);
 
-  return experienceRoute
-    ? <App />
-    : <NotFoundPage requestedPath={pathname} />;
+  return (
+    <>
+      {experienceRoute
+        ? <App />
+        : <NotFoundPage requestedPath={pathname} />}
+      <RestrictedActionToast />
+    </>
+  );
 }
