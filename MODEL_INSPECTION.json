@@ -1,7 +1,6 @@
 {
   "file": "public/models/norka-r35-desktop.glb",
-  "version": 2,
-  "byteLength": 17414688,
+  "byteLength": 10234172,
   "asset": {
     "generator": "glTF-Transform v4.4.1",
     "version": "2.0",
@@ -15,20 +14,110 @@
   "extensionsUsed": [
     "EXT_meshopt_compression",
     "KHR_materials_specular",
-    "KHR_mesh_quantization"
+    "KHR_mesh_quantization",
+    "KHR_texture_basisu"
   ],
   "counts": {
     "scenes": 1,
     "nodes": 436,
     "meshes": 195,
     "materials": 64,
-    "textures": 71,
-    "images": 71,
+    "textures": 50,
     "animations": 0,
-    "cameras": 0
+    "primitiveDefinitions": 195,
+    "basePrimitiveDraws": 195,
+    "instancedMeshBatches": 0,
+    "instancedCopies": 0
   },
-  "externalImages": [],
-  "externalBuffers": [],
+  "worldBounds": {
+    "min": [
+      -1.04763,
+      -0.05205,
+      -2.34715
+    ],
+    "max": [
+      1.04708,
+      1.2536,
+      2.57947
+    ]
+  },
+  "gpuEstimate": {
+    "nominalTextureBytes": 81473116,
+    "nominalTextureMiB": 77.7,
+    "rgba32KtxWorstCaseTextureBytes": 332059944,
+    "rgba32KtxWorstCaseTextureMiB": 316.68,
+    "geometryBytes": 7016018,
+    "geometryMiB": 6.69,
+    "nominalCombinedBytes": 88489134,
+    "nominalCombinedMiB": 84.39,
+    "rgba32KtxWorstCaseCombinedBytes": 339075962,
+    "rgba32KtxWorstCaseCombinedMiB": 323.37,
+    "decodedStandardImageCpuBytes": 73728,
+    "decodedStandardImageCpuMiB": 0.07,
+    "units": "bytes",
+    "notMeasuredRuntime": true,
+    "note": "Model-only estimates. Nominal KTX2 bytes vary by ASTC/ETC/BC target; RGBA32 is the no-compression KTX worst case. Excludes retained KTX mip copies, workers, GLB cache, framebuffer, HDR, PMREM, shadows, compositor and driver overhead."
+  },
+  "texturePayload": {
+    "sourceBytes": 5729040,
+    "texels": 62261248,
+    "ktx2": 44,
+    "uastc": 33,
+    "etc1s": 11,
+    "uncompressed": 6
+  },
+  "largestTextures": [
+    {
+      "name": "norka-paint-reference",
+      "resolution": "4096x4096",
+      "compression": "UASTC",
+      "gpuSize": 22369648
+    },
+    {
+      "name": "norka-carbon-reference",
+      "resolution": "4096x4096",
+      "compression": "UASTC",
+      "gpuSize": 22369648
+    },
+    {
+      "name": "norka-glass-reference",
+      "resolution": "4096x4096",
+      "compression": "UASTC",
+      "gpuSize": 22369648
+    },
+    {
+      "name": "",
+      "resolution": "1024x1024",
+      "compression": "UASTC",
+      "gpuSize": 1398128
+    },
+    {
+      "name": "",
+      "resolution": "1024x1024",
+      "compression": "UASTC",
+      "gpuSize": 1398128
+    },
+    {
+      "name": "",
+      "resolution": "1024x1024",
+      "compression": "UASTC",
+      "gpuSize": 1398128
+    },
+    {
+      "name": "",
+      "resolution": "1024x1024",
+      "compression": "UASTC",
+      "gpuSize": 1398128
+    },
+    {
+      "name": "",
+      "resolution": "1024x1024",
+      "compression": "UASTC",
+      "gpuSize": 1398128
+    }
+  ],
+  "renderVertices": 1267536,
+  "uploadVertices": 227138,
   "namedNodesFound": [
     "body_11",
     "carbon_12",
@@ -42,6 +131,8 @@
     "WHEEL_RF_96",
     "WHEEL_RR_107",
     "COCKPIT_HR_233",
+    "DOOR_INT_L_158",
+    "DOOR_INT_L_anim_160",
     "STEER_HR_232",
     "hoodanim_242",
     "hood_236",

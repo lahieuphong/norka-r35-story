@@ -78,6 +78,7 @@ const interestingNodeNames = new Set([
   'body_11', 'carbon_12', 'Engine_23', 'WHEEL_LF_74', 'WHEEL_LR_85', 'WHEEL_RF_96', 'WHEEL_RR_107',
   'SUSP_LF_56', 'SUSP_LR_58', 'SUSP_RF_60', 'SUSP_RR_62', 'hoodanim_242', 'hood_236', 'hood_grills_237',
   'hood_latch_238', 'hood_parts_239', 'hood_vents_240', 'COCKPIT_HR_233', 'STEER_HR_232',
+  'DOOR_INT_L_158', 'DOOR_INT_L_anim_160',
 ]);
 
 console.log(JSON.stringify({

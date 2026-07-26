@@ -60,7 +60,7 @@ export function readDeviceProfile(): DeviceProfile {
     lowEnd,
     modelTier: selectModelTier(isMobile, lowEnd),
     dpr,
-    // Mobile already renders at up to 2x DPR. Avoiding a multisampled default
+    // Mobile already renders at up to 1.75x DPR. Avoiding a multisampled default
     // framebuffer saves considerably more memory than MSAA adds in edge
     // quality there. Keep the existing guarded desktop behavior unchanged.
     antialias: !isMobile && !lowEnd && dpr <= 1.25 && renderPixels <= 2_250_000,
