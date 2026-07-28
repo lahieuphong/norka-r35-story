@@ -10,7 +10,7 @@ import { useReducedMotion } from '../hooks/useReducedMotion';
 import { CarCanvas } from '../three/CarCanvas';
 import { STORY_SHOT_ORDER, type ShotName } from '../three/cameraShots';
 import { DEFAULT_MODEL_ATTRIBUTION, type ModelAttribution, type ModelReadyDetails } from '../three/CarModel';
-import type { ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
+import type { DrivePhase, ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
 import { publishStoryProgress, subscribeStoryProgress } from '../three/storyProgress';
 import { disableStoryScrollTriggers, enableStoryScrollTriggers } from '../three/storyState';
 
@@ -22,6 +22,7 @@ interface BodySnapshot { readonly position: string; readonly top: string; readon
 interface LockedLocationSnapshot { readonly pathname: string; readonly search: string; readonly hash: string; }
 type StoryReturnState = 'idle' | StoryReturnPhase;
 type StoryHashTarget = HTMLElement | 'top' | null;
+type PendingDriveExit = 'story' | null;
 
 function resolveStoryHashTarget(hash: string): StoryHashTarget {
   if (hash === '' || hash === '#') return 'top';
@@ -103,11 +104,14 @@ export function App() {
   const [modelAttribution, setModelAttribution] = useState<ModelAttribution>(DEFAULT_MODEL_ATTRIBUTION);
   const [phase, setPhase] = useState<ExplorePhase>('story');
   const [viewPhase, setViewPhase] = useState<ExploreViewPhase>('exterior');
+  const [drivePhase, setDrivePhase] = useState<DrivePhase>('idle');
   const [exitStoryShot, setExitStoryShot] = useState<ShotName | null>(null);
   const [activeCtaHint, setActiveCtaHint] = useState<CtaHintIntent | null>(null);
   const [storyReturnState, setStoryReturnState] = useState<StoryReturnState>('idle');
   const phaseRef = useRef<ExplorePhase>('story');
   const viewPhaseRef = useRef<ExploreViewPhase>('exterior');
+  const drivePhaseRef = useRef<DrivePhase>('idle');
+  const pendingDriveExit = useRef<PendingDriveExit>(null);
   const storyReturnStateRef = useRef<StoryReturnState>('idle');
   const activeCtaHintRef = useRef<CtaHintIntent | null>(null);
   const webglFailedRef = useRef(false);
@@ -351,9 +355,12 @@ export function App() {
     focusStoryStartAfterReturn.current = false;
     phaseRef.current = 'story';
     viewPhaseRef.current = 'exterior';
+    drivePhaseRef.current = 'idle';
+    pendingDriveExit.current = null;
     storyReturnStateRef.current = 'idle';
     setPhase('story');
     setViewPhase('exterior');
+    setDrivePhase('idle');
     setExitStoryShot(null);
     setStoryReturnState('idle');
     // A WebGL failure also ends the intro cover. The fallback owns
@@ -448,6 +455,9 @@ export function App() {
     cancelPendingFinalHint();
     updateCtaHint(null);
     setExitStoryShot(null);
+    drivePhaseRef.current = 'idle';
+    pendingDriveExit.current = null;
+    setDrivePhase('idle');
     phaseRef.current = 'entering';
     disableStoryScrollTriggers(); lockScroll(); setPhase('entering');
   }, [cancelPendingFinalHint, lockScroll, modelReady, updateCtaHint]);
@@ -464,14 +474,72 @@ export function App() {
     phaseRef.current = 'explore';
     setPhase('explore');
   }, []);
-  const exitExplore = useCallback((): void => {
-    if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+  const beginExploreExit = useCallback((): void => {
+    if (
+      phaseRef.current !== 'explore'
+      || viewPhaseRef.current !== 'exterior'
+      || drivePhaseRef.current !== 'idle'
+    ) return;
     setExitStoryShot(resolveChangedStoryShot(lockedLocation.current));
     phaseRef.current = 'exiting';
     setPhase('exiting');
   }, []);
-  const openExteriorDoor = useCallback((): void => {
+  const startDrive = useCallback((): void => {
+    if (
+      phaseRef.current !== 'explore'
+      || viewPhaseRef.current !== 'exterior'
+      || drivePhaseRef.current !== 'idle'
+    ) return;
+    pendingDriveExit.current = null;
+    drivePhaseRef.current = 'starting';
+    setDrivePhase('starting');
+  }, []);
+  const stopDrive = useCallback((): void => {
+    if (
+      phaseRef.current !== 'explore'
+      || viewPhaseRef.current !== 'exterior'
+      || (drivePhaseRef.current !== 'starting' && drivePhaseRef.current !== 'driving')
+    ) return;
+    pendingDriveExit.current = null;
+    drivePhaseRef.current = 'stopping';
+    setDrivePhase('stopping');
+  }, []);
+  const driveStartComplete = useCallback((): void => {
+    if (
+      phaseRef.current !== 'explore'
+      || viewPhaseRef.current !== 'exterior'
+      || drivePhaseRef.current !== 'starting'
+    ) return;
+    drivePhaseRef.current = 'driving';
+    setDrivePhase('driving');
+  }, []);
+  const driveStopComplete = useCallback((): void => {
+    if (drivePhaseRef.current !== 'stopping') return;
+    const shouldExitStory = pendingDriveExit.current === 'story';
+    pendingDriveExit.current = null;
+    drivePhaseRef.current = 'idle';
+    setDrivePhase('idle');
+    if (shouldExitStory) beginExploreExit();
+  }, [beginExploreExit]);
+  const exitExplore = useCallback((): void => {
     if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+    if (drivePhaseRef.current === 'idle') {
+      beginExploreExit();
+      return;
+    }
+    // Exit remains available while Auto Drive is slowing down. This lets a
+    // user upgrade a normal Stop into a story exit without restarting motion.
+    pendingDriveExit.current = 'story';
+    if (drivePhaseRef.current === 'stopping') return;
+    drivePhaseRef.current = 'stopping';
+    setDrivePhase('stopping');
+  }, [beginExploreExit]);
+  const openExteriorDoor = useCallback((): void => {
+    if (
+      phaseRef.current !== 'explore'
+      || viewPhaseRef.current !== 'exterior'
+      || drivePhaseRef.current !== 'idle'
+    ) return;
     viewPhaseRef.current = 'openingExteriorDoor';
     setViewPhase('openingExteriorDoor');
   }, []);
@@ -547,27 +615,38 @@ export function App() {
     resumeStoryAfterExit.current = true;
     phaseRef.current = 'story';
     viewPhaseRef.current = 'exterior';
+    drivePhaseRef.current = 'idle';
+    pendingDriveExit.current = null;
     setExitStoryShot(null);
     setViewPhase('exterior');
+    setDrivePhase('idle');
     setPhase('story');
   }, []);
   const exploreActive = phase !== 'story';
+  const driveActive = drivePhase !== 'idle';
   const storyReturnActive = storyReturnState !== 'idle';
   const backgroundInteractionBlocked = !introDismissed || exploreActive || storyReturnActive;
 
   return (
-    <div className={'experience' + (webglFailed ? ' experience--webgl-failed' : '') + (exploreActive ? ' experience--explore' : '') + (storyReturnActive ? ' experience--story-return experience--story-return-' + storyReturnState : '')} aria-busy={(!introDismissed || storyReturnActive) || undefined}>
+    <div
+      className={'experience' + (webglFailed ? ' experience--webgl-failed' : '') + (exploreActive ? ' experience--explore' : '') + (driveActive ? ` experience--drive experience--drive-${drivePhase}` : '') + (storyReturnActive ? ' experience--story-return experience--story-return-' + storyReturnState : '')}
+      data-drive-state={drivePhase}
+      aria-busy={(!introDismissed || storyReturnActive) || undefined}
+    >
       <a className="skip-link" href="#explore" inert={backgroundInteractionBlocked} tabIndex={backgroundInteractionBlocked ? -1 : undefined}>Skip to the story</a>
       <CarCanvas
         modelReady={modelReady}
         exitStoryShot={exitStoryShot}
         phase={phase}
         viewPhase={viewPhase}
+        drivePhase={drivePhase}
         reducedMotion={reducedMotion}
         onModelReady={onModelReady}
         onWebGLFailure={onWebGLFailure}
         onEnterComplete={enterComplete}
         onExitComplete={exitComplete}
+        onDriveStartComplete={driveStartComplete}
+        onDriveStopComplete={driveStopComplete}
         onOpenExteriorDoor={openExteriorDoor}
         onExteriorDoorOpenComplete={exteriorDoorOpenComplete}
         onInteriorEnterComplete={interiorEnterComplete}
@@ -605,7 +684,10 @@ export function App() {
       <ExploreOverlay
         phase={phase}
         viewPhase={viewPhase}
+        drivePhase={drivePhase}
         onExit={exitExplore}
+        onStartDrive={startDrive}
+        onStopDrive={stopDrive}
         onEnterInterior={enterInterior}
         onOpenInteriorDoor={openInteriorDoor}
         onCloseInteriorDoor={closeInteriorDoor}

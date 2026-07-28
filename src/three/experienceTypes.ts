@@ -1,4 +1,9 @@
 export type ExplorePhase = 'story' | 'entering' | 'explore' | 'exiting';
+export type DrivePhase = 'idle' | 'starting' | 'driving' | 'stopping';
+
+export function isDriveActive(phase: DrivePhase): boolean {
+  return phase !== 'idle';
+}
 
 /**
  * The story/Explore transition and the exterior/interior transition are kept

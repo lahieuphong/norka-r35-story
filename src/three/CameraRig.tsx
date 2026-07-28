@@ -13,7 +13,7 @@ import {
   type CameraWaypointSet,
   type ShotName,
 } from './cameraShots';
-import { isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
+import { isDriveActive, isStableExploreView, type DrivePhase, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { getInteriorTransitionSet } from './interiorTransitionShots';
 import { cameraDebugSnapshot, storyVisualState } from './storyState';
 import type { VehicleInteractionRig } from './VehicleInteractionRig';
@@ -25,11 +25,14 @@ interface Props {
   readonly modelReady: boolean;
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
+  readonly drivePhase: DrivePhase;
   readonly exitStoryShot?: ShotName | null;
   readonly interactionRig: VehicleInteractionRig;
   readonly reducedMotion: boolean;
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
+  readonly onDriveStartComplete: () => void;
+  readonly onDriveStopComplete: () => void;
   readonly onExteriorDoorOpenComplete: () => void;
   readonly onInteriorEnterComplete: () => void;
   readonly onInteriorDoorOpenComplete: () => void;
@@ -43,6 +46,17 @@ interface CameraSnapshot {
   readonly position: THREE.Vector3;
   readonly target: THREE.Vector3;
   readonly fov: number;
+}
+
+interface DriveCameraSnapshot extends CameraSnapshot {
+  readonly quaternion: THREE.Quaternion;
+}
+
+interface DriveCameraShot {
+  readonly position: readonly [number, number, number];
+  readonly target: readonly [number, number, number];
+  readonly fov: number;
+  readonly duration: number;
 }
 
 interface StoryCameraSnapshot extends CameraSnapshot {
@@ -94,6 +108,53 @@ const INTERIOR_STORY_SHOTS: ReadonlySet<ShotName> = new Set([
 // Every transition is killed explicitly on phase changes; GSAP overwrite must
 // stay off or it permanently removes the story's camera tweens while paused.
 const TRANSITION_OVERWRITE = false;
+const DRIVE_ACCELERATION_DURATION = 0.8;
+const DRIVE_DECELERATION_DURATION = 1;
+const DRIVE_CRUISE_SPEED = 11.5;
+const DRIVE_WHEEL_RADIUS = 0.33;
+// DriveRoad maps 42 shader periods across a 96-unit plane. At its exact
+// 42/96 travel scale, 4096 units become 1792 complete periods, so long-running
+// numeric state can wrap without changing any visible road phase.
+const DRIVE_DISTANCE_WRAP = 4096;
+const FULL_TURN = Math.PI * 2;
+
+const DESKTOP_DRIVE_TOUR: readonly DriveCameraShot[] = [
+  { position: [4.6, 1.55, 6.7], target: [0, 0.46, 0.75], fov: 38, duration: 4.2 },
+  { position: [-4.8, 0.92, 5.8], target: [0, 0.44, 0.7], fov: 38, duration: 4 },
+  { position: [-6.6, 1.35, 0.65], target: [0, 0.45, 0.1], fov: 41, duration: 4.4 },
+  { position: [-4.7, 1.18, -5.9], target: [0, 0.46, -0.75], fov: 39, duration: 4.1 },
+  { position: [0.7, 0.82, -6.9], target: [0, 0.47, -1], fov: 36, duration: 3.8 },
+  { position: [5.2, 1.3, -5.2], target: [0, 0.46, -0.6], fov: 40, duration: 4.2 },
+  { position: [6.5, 1.7, 0.3], target: [0, 0.5, 0.05], fov: 41, duration: 4.3 },
+  { position: [3.5, 2.65, 5.2], target: [0, 0.38, 0.8], fov: 37, duration: 4.4 },
+];
+
+const LANDSCAPE_DRIVE_TOUR: readonly DriveCameraShot[] = [
+  { position: [4.2, 1.25, 6.4], target: [0, 0.45, 0.72], fov: 36, duration: 3.8 },
+  { position: [-4.6, 0.9, 5.5], target: [0, 0.43, 0.62], fov: 36, duration: 3.8 },
+  { position: [-6.1, 1.2, -0.1], target: [0, 0.44, 0], fov: 38, duration: 4.1 },
+  { position: [-4.2, 1.05, -5.7], target: [0, 0.45, -0.7], fov: 37, duration: 3.9 },
+  { position: [0.5, 0.75, -6.5], target: [0, 0.46, -0.92], fov: 35, duration: 3.7 },
+  { position: [5.9, 1.35, -0.25], target: [0, 0.47, 0], fov: 38, duration: 4.1 },
+  { position: [3.2, 2.25, 5.1], target: [0, 0.4, 0.72], fov: 35, duration: 4.2 },
+];
+
+const COMPACT_DRIVE_TOUR: readonly DriveCameraShot[] = [
+  { position: [7.84, 2.22, 9.59], target: [0, 0.45, 0.55], fov: 52, duration: 4.2 },
+  { position: [-8.11, 1.67, 9.46], target: [0, 0.42, 0.5], fov: 52, duration: 4.1 },
+  { position: [-13.43, 2.23, -0.33], target: [0, 0.45, 0], fov: 51, duration: 4.4 },
+  { position: [-7.37, 1.66, -9.78], target: [0, 0.45, -0.62], fov: 52, duration: 4.1 },
+  { position: [8.11, 1.95, -9.6], target: [0, 0.46, -0.55], fov: 52, duration: 4.2 },
+  { position: [12.84, 2.96, 7.65], target: [0, 0.43, 0.45], fov: 51, duration: 4.4 },
+];
+
+function getDriveTour(compact: boolean, landscape: boolean): readonly DriveCameraShot[] {
+  return compact ? COMPACT_DRIVE_TOUR : landscape ? LANDSCAPE_DRIVE_TOUR : DESKTOP_DRIVE_TOUR;
+}
+
+function wrapPositive(value: number, modulus: number): number {
+  return THREE.MathUtils.euclideanModulo(value, modulus);
+}
 
 function copyStoryShot(shots: CameraShotSet, name: ShotName): CameraSnapshot {
   const shot = shots[name];
@@ -203,11 +264,14 @@ export function CameraRig({
   modelReady,
   phase,
   viewPhase,
+  drivePhase,
   exitStoryShot,
   interactionRig,
   reducedMotion,
   onEnterComplete,
   onExitComplete,
+  onDriveStartComplete,
+  onDriveStopComplete,
   onExteriorDoorOpenComplete,
   onInteriorEnterComplete,
   onInteriorDoorOpenComplete,
@@ -237,6 +301,9 @@ export function CameraRig({
   const rig = rigRef.current;
   const activeTween = useRef<gsap.core.Timeline | null>(null);
   const exteriorSnapshot = useRef<CameraSnapshot | null>(null);
+  const driveSnapshot = useRef<DriveCameraSnapshot | null>(null);
+  const driveTour = useRef<readonly DriveCameraShot[]>(getDriveTour(compact, landscape));
+  const driveReducedMotion = useRef(reducedMotion);
   const storySnapshot = useRef<StoryCameraSnapshot | null>(null);
 
   // The scroll-story context owns GSAP tweens on this same rig. Freeze its
@@ -373,6 +440,193 @@ export function CameraRig({
           .to(rig.target, { x: destination.target.x, y: destination.target.y, z: destination.target.z }, 0)
           .to(rig, { fov: destination.fov }, 0);
       }
+    } else if (phase === 'explore' && viewPhase === 'exterior' && drivePhase === 'starting') {
+      const controls = controlsRef.current;
+      rig.position.copy(camera.position);
+      if (controls) rig.target.copy(controls.target);
+      if (camera instanceof THREE.PerspectiveCamera) rig.fov = camera.fov;
+      driveSnapshot.current = {
+        position: camera.position.clone(),
+        target: (controls?.target ?? rig.target).clone(),
+        fov: camera instanceof THREE.PerspectiveCamera ? camera.fov : rig.fov,
+        quaternion: camera.quaternion.clone(),
+      };
+      driveTour.current = getDriveTour(compact, landscape);
+      driveReducedMotion.current = reducedMotion;
+      interactionRig.driveSpeed = 0;
+      interactionRig.driveBlend = 0;
+      interactionRig.driveDistance = 0;
+
+      const firstShot = driveTour.current[0] ?? DESKTOP_DRIVE_TOUR[0]!;
+      const cameraDuration = driveReducedMotion.current ? 0.01 : DRIVE_ACCELERATION_DURATION;
+      const timeline = gsap.timeline({
+        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
+        onUpdate: invalidate,
+        onComplete: () => {
+          interactionRig.driveSpeed = DRIVE_CRUISE_SPEED;
+          interactionRig.driveBlend = 1;
+          syncCameraToRig(camera, rig, controlsRef.current);
+          onDriveStartComplete();
+        },
+      });
+      activeTween.current = timeline;
+      if (driveReducedMotion.current) {
+        timeline.to(rig.position, {
+          x: firstShot.position[0],
+          y: firstShot.position[1],
+          z: firstShot.position[2],
+          duration: cameraDuration,
+        }, 0);
+      } else {
+        const horizontalRadius = Math.hypot(rig.position.x, rig.position.z);
+        const firstRadius = Math.hypot(firstShot.position[0], firstShot.position[2]);
+        const directionX = horizontalRadius > 0.25
+          ? rig.position.x / horizontalRadius
+          : firstShot.position[0] / firstRadius;
+        const directionZ = horizontalRadius > 0.25
+          ? rig.position.z / horizontalRadius
+          : firstShot.position[2] / firstRadius;
+        const clearanceRadius = Math.max(7.5, horizontalRadius);
+        const clearanceHeight = Math.max(2.9, rig.position.y);
+        timeline
+          .to(rig.position, {
+            x: directionX * clearanceRadius,
+            y: clearanceHeight,
+            z: directionZ * clearanceRadius,
+            duration: 0.24,
+          }, 0)
+          .to(rig.position, {
+            x: firstShot.position[0],
+            y: Math.max(clearanceHeight, firstShot.position[1] + 1.4),
+            z: firstShot.position[2],
+            duration: 0.28,
+          }, 0.24)
+          .to(rig.position, {
+            x: firstShot.position[0],
+            y: firstShot.position[1],
+            z: firstShot.position[2],
+            duration: 0.28,
+          }, 0.52);
+      }
+      timeline
+        .to(rig.target, { x: firstShot.target[0], y: firstShot.target[1], z: firstShot.target[2], duration: cameraDuration }, 0)
+        .to(rig, { fov: firstShot.fov, duration: cameraDuration }, 0)
+        .to(interactionRig, {
+          driveSpeed: DRIVE_CRUISE_SPEED,
+          driveBlend: 1,
+          duration: DRIVE_ACCELERATION_DURATION,
+        }, 0);
+    } else if (phase === 'explore' && viewPhase === 'exterior' && drivePhase === 'driving') {
+      const tour = driveTour.current;
+      const firstShot = tour[0] ?? DESKTOP_DRIVE_TOUR[0]!;
+      interactionRig.driveSpeed = DRIVE_CRUISE_SPEED;
+      interactionRig.driveBlend = 1;
+
+      if (driveReducedMotion.current) {
+        rig.position.set(...firstShot.position);
+        rig.target.set(...firstShot.target);
+        rig.fov = firstShot.fov;
+        syncCameraToRig(camera, rig, controlsRef.current);
+        invalidate();
+      } else {
+        const timeline = gsap.timeline({
+          defaults: { ease: 'sine.inOut', overwrite: TRANSITION_OVERWRITE },
+          onUpdate: invalidate,
+          repeat: -1,
+        });
+        activeTween.current = timeline;
+        for (let index = 1; index <= tour.length; index += 1) {
+          const shot = tour[index % tour.length];
+          if (!shot) continue;
+          const start = timeline.duration();
+          timeline
+            .to(rig.position, {
+              x: shot.position[0],
+              y: shot.position[1],
+              z: shot.position[2],
+              duration: shot.duration,
+            }, start)
+            .to(rig.target, {
+              x: shot.target[0],
+              y: shot.target[1],
+              z: shot.target[2],
+              duration: shot.duration,
+            }, start)
+            .to(rig, { fov: shot.fov, duration: shot.duration }, start);
+        }
+      }
+    } else if (phase === 'explore' && viewPhase === 'exterior' && drivePhase === 'stopping') {
+      const controls = controlsRef.current;
+      rig.position.copy(camera.position);
+      if (controls) rig.target.copy(controls.target);
+      if (camera instanceof THREE.PerspectiveCamera) rig.fov = camera.fov;
+      const snapshot = driveSnapshot.current ?? {
+        position: camera.position.clone(),
+        target: (controls?.target ?? rig.target).clone(),
+        fov: camera instanceof THREE.PerspectiveCamera ? camera.fov : rig.fov,
+        quaternion: camera.quaternion.clone(),
+      };
+      const restoreDriveSnapshot = (): void => {
+        rig.position.copy(snapshot.position);
+        rig.target.copy(snapshot.target);
+        rig.fov = snapshot.fov;
+        syncCameraToRig(camera, rig, controlsRef.current);
+        camera.quaternion.copy(snapshot.quaternion);
+        camera.updateMatrixWorld();
+      };
+
+      if (driveReducedMotion.current) restoreDriveSnapshot();
+      activeTween.current = gsap.timeline({
+        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
+        onUpdate: invalidate,
+        onComplete: () => {
+          restoreDriveSnapshot();
+          interactionRig.driveSpeed = 0;
+          interactionRig.driveBlend = 0;
+          interactionRig.driveDistance = 0;
+          driveSnapshot.current = null;
+          onDriveStopComplete();
+        },
+      });
+      if (!driveReducedMotion.current) {
+        const horizontalRadius = Math.hypot(rig.position.x, rig.position.z);
+        const snapshotRadius = Math.hypot(snapshot.position.x, snapshot.position.z);
+        const directionX = horizontalRadius > 0.25
+          ? rig.position.x / horizontalRadius
+          : snapshotRadius > 0.25 ? snapshot.position.x / snapshotRadius : 1;
+        const directionZ = horizontalRadius > 0.25
+          ? rig.position.z / horizontalRadius
+          : snapshotRadius > 0.25 ? snapshot.position.z / snapshotRadius : 0;
+        const clearanceRadius = Math.max(7.5, horizontalRadius);
+        const clearanceHeight = Math.max(2.9, rig.position.y, snapshot.position.y + 1.4);
+        activeTween.current
+          .to(rig.position, {
+            x: directionX * clearanceRadius,
+            y: clearanceHeight,
+            z: directionZ * clearanceRadius,
+            duration: 0.28,
+          }, 0)
+          .to(rig.position, {
+            x: snapshot.position.x,
+            y: clearanceHeight,
+            z: snapshot.position.z,
+            duration: 0.36,
+          }, 0.28)
+          .to(rig.position, {
+            x: snapshot.position.x,
+            y: snapshot.position.y,
+            z: snapshot.position.z,
+            duration: 0.36,
+          }, 0.64)
+          .to(rig.target, { x: snapshot.target.x, y: snapshot.target.y, z: snapshot.target.z, duration: DRIVE_DECELERATION_DURATION }, 0)
+          .to(rig, { fov: snapshot.fov, duration: DRIVE_DECELERATION_DURATION }, 0);
+      }
+      activeTween.current.to(interactionRig, {
+        driveSpeed: 0,
+        driveBlend: 0,
+        duration: DRIVE_DECELERATION_DURATION,
+        ease: 'power2.out',
+      }, 0);
     } else if (phase === 'explore' && (
       viewPhase === 'openingExteriorDoor'
       || viewPhase === 'openingInteriorDoor'
@@ -491,9 +745,13 @@ export function CameraRig({
     } else if (phase === 'story') {
       storySnapshot.current = null;
       exteriorSnapshot.current = null;
+      driveSnapshot.current = null;
       interactionRig.doorProgress = 0;
       interactionRig.glassOpacity = 1;
       interactionRig.steeringAngle = 0;
+      interactionRig.driveSpeed = 0;
+      interactionRig.driveBlend = 0;
+      interactionRig.driveDistance = 0;
     }
     return () => {
       activeTween.current?.kill();
@@ -502,17 +760,34 @@ export function CameraRig({
         storyVisualState.glassOpacity = 1;
       }
     };
-  }, [camera, controlsRef, exitStoryShot, interactionRig, invalidate, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, rig, viewPhase]);
+  }, [camera, controlsRef, drivePhase, exitStoryShot, interactionRig, invalidate, onDriveStartComplete, onDriveStopComplete, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, rig, viewPhase]);
 
   useEffect(() => () => {
     interactionRig.doorProgress = 0;
     interactionRig.glassOpacity = 1;
     interactionRig.steeringAngle = 0;
+    interactionRig.driveSpeed = 0;
+    interactionRig.driveBlend = 0;
+    interactionRig.driveDistance = 0;
+    interactionRig.wheelRotation = 0;
   }, [interactionRig]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     const controls = controlsRef.current;
-    const userControlled = isStableExploreView(phase, viewPhase);
+    const driveActive = isDriveActive(drivePhase);
+    const frameTime = Math.min(Math.max(delta, 0), 0.1);
+    const driveSpeed = Math.max(0, interactionRig.driveSpeed);
+    if (driveActive && driveSpeed > 0 && frameTime > 0) {
+      interactionRig.driveDistance = wrapPositive(
+        interactionRig.driveDistance + driveSpeed * frameTime,
+        DRIVE_DISTANCE_WRAP,
+      );
+      interactionRig.wheelRotation = wrapPositive(
+        interactionRig.wheelRotation + (driveSpeed * frameTime) / DRIVE_WHEEL_RADIUS,
+        FULL_TURN,
+      );
+    }
+    const userControlled = !driveActive && isStableExploreView(phase, viewPhase);
     if (!userControlled) {
       camera.position.copy(rig.position);
       camera.lookAt(rig.target);

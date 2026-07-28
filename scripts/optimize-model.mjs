@@ -158,14 +158,15 @@ function isolateTransparentMeshInstances(document) {
 
 async function optimizeMobileGeometry(document) {
   // Material identities and names drive runtime profiles, so intentionally do
-  // not include MATERIAL or TEXTURE in deduplication. Shared opaque geometry is
-  // instanced first; remaining static opaque primitives are flattened/joined.
+  // not include MATERIAL or TEXTURE in deduplication. Dynamic subtrees are
+  // detached before instancing so neither their pivots nor their mesh children
+  // can be absorbed into static EXT_mesh_gpu_instancing batches.
   await document.transform(dedup({
     propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH],
   }));
   isolateTransparentMeshInstances(document);
-  await document.transform(instance({ min: 2 }));
   const protectedNodes = detachInteractiveNodes(document);
+  await document.transform(instance({ min: 2 }));
   await document.transform(
     // Cleanup stays deferred until the protected subtrees are reattached;
     // otherwise the intermediate orphan nodes would be pruned.
@@ -183,7 +184,19 @@ async function optimizeMobileGeometry(document) {
   await document.transform(prune({ keepAttributes: true, keepIndices: true, keepLeaves: false }));
 }
 
-const protectedInteractiveNodeNames = ['DOOR_INT_L_158', 'DOOR_INT_L_anim_160', 'STEER_HR_232'];
+const protectedInteractiveNodeNames = [
+  'DOOR_INT_L_158',
+  'DOOR_INT_L_anim_160',
+  'STEER_HR_232',
+  'WHEEL_LF_74',
+  'WHEEL_LR_85',
+  'WHEEL_RF_96',
+  'WHEEL_RR_107',
+  'SUSP_LF_56',
+  'SUSP_LR_58',
+  'SUSP_RF_60',
+  'SUSP_RR_62',
+];
 
 function detachInteractiveNodes(document) {
   const root = document.getRoot();
@@ -201,10 +214,10 @@ function restoreInteractiveNodes(document, protectedNodes) {
   const scene = document.getRoot().listScenes()[0];
   if (!scene) throw new Error('The source model is missing its primary scene.');
   for (const { node, worldMatrix } of protectedNodes) {
-    // Mobile flatten/join is intentionally run while the animated door and
-    // steering subtrees are detached. Reattaching with their previous world
-    // matrices preserves the authored pivots while every other static mesh
-    // still uses the low-draw-call mobile pipeline.
+    // Mobile instance/flatten/join is intentionally run while the animated
+    // door, steering, wheel, and suspension subtrees are detached. Reattaching
+    // with their previous world matrices preserves the authored pivots while
+    // every other static mesh still uses the low-draw-call mobile pipeline.
     node.setMatrix(worldMatrix);
     scene.addChild(node);
   }

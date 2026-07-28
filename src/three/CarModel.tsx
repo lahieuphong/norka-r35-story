@@ -62,6 +62,7 @@ export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-no
 export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
 interface Props {
   readonly anisotropy: number;
+  readonly driveActive: boolean;
   readonly interactionRig: VehicleInteractionRig;
   readonly modelTier: ModelTier;
   readonly phase: ExplorePhase;
@@ -72,6 +73,38 @@ interface Props {
 
 const MAX_STEERING_ANGLE = Math.PI * 0.75;
 const STEERING_DRAG_RADIANS_PER_VIEWPORT = Math.PI * 1.6;
+const WHEEL_LOCAL_AXIS = new THREE.Vector3(1, 0, 0);
+const WHEEL_PIVOT_NAMES = [
+  'WHEEL_LF_74',
+  'WHEEL_LR_85',
+  'WHEEL_RF_96',
+  'WHEEL_RR_107',
+] as const;
+
+interface WheelAssembly {
+  readonly pivot: THREE.Object3D;
+  readonly restQuaternion: THREE.Quaternion;
+}
+
+function createWheelAssemblies(root: THREE.Object3D): readonly WheelAssembly[] | null {
+  const matches = new Map<string, THREE.Object3D[]>();
+  WHEEL_PIVOT_NAMES.forEach((name) => matches.set(name, []));
+  root.traverse((object) => {
+    const namedMatches = matches.get(object.name);
+    if (namedMatches) namedMatches.push(object);
+  });
+
+  const wheels: WheelAssembly[] = [];
+  for (const name of WHEEL_PIVOT_NAMES) {
+    const namedMatches = matches.get(name) ?? [];
+    const pivot = namedMatches[0];
+    // Exact names are a build-time contract. Refuse partial animation if a
+    // variant is stale, duplicated, or has lost the authored mesh subtree.
+    if (namedMatches.length !== 1 || !pivot || pivot.children.length === 0) return null;
+    wheels.push({ pivot, restQuaternion: pivot.quaternion.clone() });
+  }
+  return wheels;
+}
 
 interface SteeringDragState {
   readonly pointerId: number;
@@ -218,7 +251,7 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPhase, onOpenExteriorDoor, onReady }: Props) {
+export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, phase, viewPhase, onOpenExteriorDoor, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
@@ -245,6 +278,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
     isolateSceneMaterials(scene);
     const driverDoor = createDriverDoorAssembly(scene);
     const steeringWheel = createSteeringWheelAssembly(scene);
+    const wheels = createWheelAssemblies(scene);
     const normalization = computeModelNormalization(scene);
     const referenceMaps = readEmbeddedReferenceMaps(scene);
     applyMaterialAdjustments(
@@ -283,6 +317,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
       attribution,
       driverDoor,
       steeringWheel,
+      wheels,
       glassMaterials,
       ownedGeometries: [...geometries],
       ownedMaterials: [...materials],
@@ -294,6 +329,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
   const steeringRaycaster = useRef(new THREE.Raycaster());
   const steeringPointer = useRef(new THREE.Vector2());
   const steeringTurnQuaternion = useRef(new THREE.Quaternion());
+  const wheelTurnQuaternion = useRef(new THREE.Quaternion());
   useEffect(() => {
     const canvas = renderer.domElement;
     const ownerDocument = canvas.ownerDocument;
@@ -447,6 +483,14 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
       RESOURCE_DISPOSAL_TIMERS.set(prepared, timer);
     };
   }, [prepared]);
+  useEffect(() => {
+    const wheels = prepared.wheels;
+    return () => {
+      wheels?.forEach(({ pivot, restQuaternion }) => {
+        pivot.quaternion.copy(restQuaternion);
+      });
+    };
+  }, [prepared.wheels]);
   useFrame(() => {
     if (prepared.driverDoor) {
       prepared.driverDoor.pivot.rotation.y = DRIVER_DOOR_OPEN_ANGLE * THREE.MathUtils.clamp(interactionRig.doorProgress, 0, 1);
@@ -459,6 +503,14 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
       prepared.steeringWheel.pivot.quaternion
         .copy(prepared.steeringWheel.restQuaternion)
         .multiply(steeringTurnQuaternion.current);
+    }
+    if (prepared.wheels) {
+      wheelTurnQuaternion.current.setFromAxisAngle(WHEEL_LOCAL_AXIS, interactionRig.wheelRotation);
+      prepared.wheels.forEach(({ pivot, restQuaternion }) => {
+        pivot.quaternion
+          .copy(restQuaternion)
+          .multiply(wheelTurnQuaternion.current);
+      });
     }
     const opacity = THREE.MathUtils.clamp(storyVisualState.glassOpacity * interactionRig.glassOpacity, 0, 1);
     if (Math.abs(renderedGlassOpacity.current - opacity) < 0.001) return;
@@ -477,7 +529,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
     <group position={prepared.normalization.offset}>
       <primitive object={prepared.scene} dispose={null} />
       <DoorHotspot
-        available={Boolean(prepared.driverDoor)}
+        available={Boolean(prepared.driverDoor) && !driveActive}
         phase={phase}
         viewPhase={viewPhase}
         onActivate={onOpenExteriorDoor}

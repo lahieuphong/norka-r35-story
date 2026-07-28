@@ -1,11 +1,14 @@
 import { useEffect, useRef } from 'react';
-import type { ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
+import type { DrivePhase, ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
 import { ExploreActionIcon, type ExploreActionIconName } from './ExploreActionIcon';
 
 interface Props {
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
+  readonly drivePhase: DrivePhase;
   readonly onExit: () => void;
+  readonly onStartDrive: () => void;
+  readonly onStopDrive: () => void;
   readonly onEnterInterior: () => void;
   readonly onOpenInteriorDoor: () => void;
   readonly onCloseInteriorDoor: () => void;
@@ -13,9 +16,12 @@ interface Props {
   readonly onCloseExteriorDoor: () => void;
 }
 
-function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase): string {
+function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase, drivePhase: DrivePhase): string {
   if (phase === 'entering') return 'Preparing interactive camera';
   if (phase === 'exiting') return 'Returning to the story';
+  if (viewPhase === 'exterior' && drivePhase === 'starting') return 'Engaging Auto Drive';
+  if (viewPhase === 'exterior' && drivePhase === 'driving') return 'Auto Drive active · stop driving or exit the 3D experience';
+  if (viewPhase === 'exterior' && drivePhase === 'stopping') return 'Slowing down · Exit 3D remains available';
   if (viewPhase === 'openingExteriorDoor') return 'Opening driver door';
   if (viewPhase === 'exteriorDoorOpen') return 'Door open · enter the car or close the door';
   if (viewPhase === 'exteriorDoorOpenAfterExit') return 'Outside the car · close the driver door when ready';
@@ -34,12 +40,20 @@ function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase): string {
     : 'Select the door marker · left drag orbit · right drag pan · wheel zoom';
 }
 
-export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOpenInteriorDoor, onCloseInteriorDoor, onExitInterior, onCloseExteriorDoor }: Props) {
+export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDrive, onStopDrive, onEnterInterior, onOpenInteriorDoor, onCloseInteriorDoor, onExitInterior, onCloseExteriorDoor }: Props) {
   const actionRef = useRef<HTMLButtonElement>(null);
+  const driveActionRef = useRef<HTMLButtonElement>(null);
   const openDoorRef = useRef<HTMLButtonElement>(null);
   const statusRef = useRef<HTMLDivElement>(null);
   const previousView = useRef<ExploreViewPhase>(viewPhase);
-  const exteriorReady = phase === 'explore' && viewPhase === 'exterior';
+  const previousDrive = useRef<DrivePhase>(drivePhase);
+  const driveExterior = phase === 'explore' && viewPhase === 'exterior';
+  const driveStarting = driveExterior && drivePhase === 'starting';
+  const driveReady = driveExterior && drivePhase === 'driving';
+  const driveStopping = driveExterior && drivePhase === 'stopping';
+  const driveVisible = driveStarting || driveReady || driveStopping;
+  const driveCanStop = driveStarting || driveReady;
+  const exteriorReady = driveExterior && drivePhase === 'idle';
   const exteriorDoorOpenReady = phase === 'explore' && viewPhase === 'exteriorDoorOpen';
   const exteriorDoorOpenAfterExitReady = phase === 'explore' && viewPhase === 'exteriorDoorOpenAfterExit';
   const interiorDoorOpenReady = phase === 'explore' && viewPhase === 'interiorDoorOpen';
@@ -48,11 +62,26 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
   const interactive = exteriorReady
     || exteriorDoorOpenReady
     || exteriorDoorOpenAfterExitReady
-    || stableInterior;
+    || stableInterior
+    || driveVisible;
 
   useEffect(() => {
     const previous = previousView.current;
+    const previousDrivePhase = previousDrive.current;
     previousView.current = viewPhase;
+    previousDrive.current = drivePhase;
+    if (driveStopping) {
+      statusRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (driveCanStop) {
+      // Moving from starting to driving updates the label and live status, but
+      // must not steal focus back from Exit 3D after a keyboard user tabs to it.
+      if (driveStarting && previousDrivePhase === 'idle') {
+        driveActionRef.current?.focus({ preventScroll: true });
+      }
+      return;
+    }
     if (!interactive) {
       statusRef.current?.focus({ preventScroll: true });
       return;
@@ -63,6 +92,10 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
     }
     if (exteriorDoorOpenReady || exteriorDoorOpenAfterExitReady) {
       actionRef.current?.focus();
+      return;
+    }
+    if (exteriorReady && previousDrivePhase === 'stopping') {
+      driveActionRef.current?.focus({ preventScroll: true });
       return;
     }
     if (previous === 'closingExteriorDoor') {
@@ -76,22 +109,36 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
         }
         attempts += 1;
         if (attempts >= 60) {
-          actionRef.current?.focus();
+          driveActionRef.current?.focus({ preventScroll: true });
           return;
         }
         frame = requestAnimationFrame(restoreDoorFocus);
       };
       frame = requestAnimationFrame(restoreDoorFocus);
       return () => cancelAnimationFrame(frame);
+    } else if (exteriorReady) {
+      driveActionRef.current?.focus({ preventScroll: true });
     } else {
-      actionRef.current?.focus();
+      actionRef.current?.focus({ preventScroll: true });
     }
-  }, [exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, interactive, phase, stableInterior, viewPhase]);
+  }, [driveCanStop, drivePhase, driveStopping, exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, exteriorReady, interactive, phase, stableInterior, viewPhase]);
 
   useEffect(() => {
-    if (!interactive) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape'
+      if (event.key !== 'Escape') return;
+      // A held Escape keeps emitting keydown events. Swallow repeats while the
+      // Explore controls own Escape so one physical press can never Stop Drive
+      // and then Exit 3D when the stopping transition reaches idle.
+      if (event.repeat) {
+        if (drivePhase !== 'idle' || interactive) event.preventDefault();
+        return;
+      }
+      if (drivePhase !== 'idle') {
+        event.preventDefault();
+        if (driveCanStop) onStopDrive();
+        return;
+      }
+      if (!interactive
         || exteriorDoorOpenReady
         || exteriorDoorOpenAfterExitReady
         || interiorDoorOpenReady) return;
@@ -101,10 +148,10 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, interactive, interiorDoorOpenReady, onExit, onExitInterior, stableInterior]);
+  }, [driveCanStop, drivePhase, exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, interactive, interiorDoorOpenReady, onExit, onExitInterior, onStopDrive, stableInterior]);
 
   if (phase === 'story') return null;
-  const status = readStatus(phase, viewPhase);
+  const status = readStatus(phase, viewPhase, drivePhase);
   const transitioningInterior = viewPhase === 'openingExteriorDoor'
     || viewPhase === 'enteringInterior'
     || viewPhase === 'closingInteriorDoor'
@@ -118,6 +165,10 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
     || viewPhase === 'openingInteriorDoor'
     || viewPhase === 'openingDoorForExit'
     || viewPhase === 'exitingInterior';
+  const driveTransitioning = driveStarting || driveStopping;
+  const driveHudLabel = driveStarting ? 'Engaging'
+    : driveReady ? 'Auto Drive'
+      : 'Slowing down';
   const actionLabel = exteriorDoorOpenAfterExitReady ? 'Close door'
     : viewPhase === 'openingExteriorDoor' ? 'Opening door'
       : viewPhase === 'enteringInterior' ? 'Entering cockpit'
@@ -131,10 +182,28 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
   const actionIcon: ExploreActionIconName = transitioningInterior ? 'pending'
     : 'close';
   return (
-    <aside className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}`} aria-label="Interactive 3D controls">
+    <aside
+      className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}${driveVisible ? ' is-drive' : ''}${driveTransitioning ? ' is-drive-transitioning' : ''}`}
+      data-drive-state={drivePhase}
+      aria-label="Interactive 3D controls"
+    >
       <div ref={statusRef} className="explore-overlay__announcer sr-only" role="status" aria-live="polite" aria-atomic="true" tabIndex={-1}>{status}</div>
       <div className="explore-overlay__reticle" aria-hidden="true"><span /><span /></div>
-      <div className="explore-overlay__actions" data-action-layout={stableInterior || exteriorDoorOpenReady ? 'pair' : 'single'} aria-busy={!interactive || undefined}>
+      {driveVisible ? (
+        <div className="explore-overlay__drive-hud" data-drive-state={drivePhase} aria-hidden="true">
+          <span className="explore-overlay__drive-beacon" />
+          <span className="explore-overlay__drive-copy">
+            <span>Motion system</span>
+            <strong>{driveHudLabel}</strong>
+          </span>
+          <span className="explore-overlay__drive-mark">R35</span>
+        </div>
+      ) : null}
+      <div
+        className="explore-overlay__actions"
+        data-action-layout={stableInterior || exteriorDoorOpenReady || exteriorReady || driveVisible ? 'pair' : 'single'}
+        aria-busy={(!interactive || driveStopping) || undefined}
+      >
         {stableInterior ? (
           <>
             <button ref={openDoorRef} type="button" className="explore-overlay__exit" data-tone="primary" onClick={interiorReady ? onOpenInteriorDoor : onCloseInteriorDoor}>
@@ -151,6 +220,42 @@ export function ExploreOverlay({ phase, viewPhase, onExit, onEnterInterior, onOp
             </button>
             <button type="button" className="explore-overlay__exit" data-tone="secondary" onClick={onCloseExteriorDoor}>
               <span className="explore-overlay__action-label">Close door</span><ExploreActionIcon name="close" />
+            </button>
+          </>
+        ) : exteriorReady ? (
+          <>
+            <button
+              ref={driveActionRef}
+              type="button"
+              className="explore-overlay__exit"
+              data-tone="primary"
+              data-drive-control
+              aria-pressed={false}
+              onClick={onStartDrive}
+            >
+              <span className="explore-overlay__action-label">Auto drive</span><ExploreActionIcon name="drive" />
+            </button>
+            <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="utility" onClick={onExit}>
+              <span className="explore-overlay__action-label">Exit 3D</span><ExploreActionIcon name="close" />
+            </button>
+          </>
+        ) : driveVisible ? (
+          <>
+            <button
+              ref={driveActionRef}
+              type="button"
+              className="explore-overlay__exit"
+              data-tone="primary"
+              data-drive-control
+              aria-pressed={true}
+              aria-busy={driveStopping || undefined}
+              disabled={!driveCanStop}
+              onClick={onStopDrive}
+            >
+              <span className="explore-overlay__action-label">{driveStopping ? 'Stopping' : 'Stop drive'}</span><ExploreActionIcon name="stop" />
+            </button>
+            <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="utility" onClick={onExit}>
+              <span className="explore-overlay__action-label">Exit 3D</span><ExploreActionIcon name="close" />
             </button>
           </>
         ) : (

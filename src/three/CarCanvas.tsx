@@ -7,7 +7,8 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { CameraRig } from './CameraRig';
 import { CarModel, releaseModelDecoders, type ModelReadyDetails } from './CarModel';
 import { readDeviceProfile, type DeviceProfile } from './deviceProfile';
-import { isExteriorOrbitEnabled, isInteriorOrbitEnabled, isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
+import { isDriveActive, isExteriorOrbitEnabled, isInteriorOrbitEnabled, isStableExploreView, type DrivePhase, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
+import { DriveRoad } from './DriveRoad';
 import { Lighting } from './Lighting';
 import { getShotSet, INITIAL_STORY_SHOT, type ShotName, type VectorTuple } from './cameraShots';
 import { getInteriorTransitionSet } from './interiorTransitionShots';
@@ -17,12 +18,15 @@ interface Props {
   readonly modelReady: boolean;
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
+  readonly drivePhase: DrivePhase;
   readonly exitStoryShot?: ShotName | null;
   readonly reducedMotion: boolean;
   readonly onModelReady: (details: ModelReadyDetails) => void;
   readonly onWebGLFailure: () => void;
   readonly onEnterComplete: () => void;
   readonly onExitComplete: () => void;
+  readonly onDriveStartComplete: () => void;
+  readonly onDriveStopComplete: () => void;
   readonly onOpenExteriorDoor: () => void;
   readonly onExteriorDoorOpenComplete: () => void;
   readonly onInteriorEnterComplete: () => void;
@@ -124,17 +128,21 @@ function useProfile(): DeviceProfile {
   }, []);
   return profile;
 }
-function VisibilityController() {
+function VisibilityController({ driveActive }: { readonly driveActive: boolean }) {
   const setFrameloop = useThree((state) => state.setFrameloop);
   const invalidate = useThree((state) => state.invalidate);
   useEffect(() => {
     const change = (): void => {
       if (document.visibilityState === 'hidden') setFrameloop('never');
-      else { setFrameloop('demand'); invalidate(); }
+      else {
+        setFrameloop(driveActive ? 'always' : 'demand');
+        invalidate();
+      }
     };
+    change();
     document.addEventListener('visibilitychange', change);
     return () => document.removeEventListener('visibilitychange', change);
-  }, [invalidate, setFrameloop]);
+  }, [driveActive, invalidate, setFrameloop]);
   return null;
 }
 function DecoderLifecycle() {
@@ -645,7 +653,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
   public override render(): ReactNode { return this.state.failed ? <WebGLFallback onFailure={this.props.onFailure} /> : this.props.children; }
 }
 
-function WebGLCarCanvas({ modelReady, phase, viewPhase, exitStoryShot = null, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
+function WebGLCarCanvas({ modelReady, phase, viewPhase, drivePhase, exitStoryShot = null, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onDriveStartComplete, onDriveStopComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
   const profile = useProfile();
   const [gpuConstrained, setGpuConstrained] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -653,9 +661,10 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, exitStoryShot = null, re
   const panCorrection = useRef(new THREE.Vector3());
   const interactionRig = useMemo(createVehicleInteractionRig, []);
   const shot = useMemo(() => getShotSet(profile.compact, profile.landscape)[INITIAL_STORY_SHOT], [profile.compact, profile.landscape]);
-  const exteriorOrbit = isExteriorOrbitEnabled(phase, viewPhase);
-  const interiorOrbit = isInteriorOrbitEnabled(phase, viewPhase);
-  const interactive = isStableExploreView(phase, viewPhase);
+  const driveActive = isDriveActive(drivePhase);
+  const exteriorOrbit = !driveActive && isExteriorOrbitEnabled(phase, viewPhase);
+  const interiorOrbit = !driveActive && isInteriorOrbitEnabled(phase, viewPhase);
+  const interactive = !driveActive && isStableExploreView(phase, viewPhase);
   const interiorOrbitLimits = profile.compact
     ? COMPACT_INTERIOR_ORBIT_LIMITS
     : profile.landscape
@@ -741,7 +750,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, exitStoryShot = null, re
           }}
         >
           <color attach="background" args={['#e8edf2']} />
-          <VisibilityController />
+          <VisibilityController driveActive={driveActive} />
           <DecoderLifecycle />
           <ControlsInteractionReset controlsRef={controlsRef} interactive={interactive} />
           <SmoothZoomControls
@@ -759,11 +768,14 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, exitStoryShot = null, re
             modelReady={modelReady}
             phase={phase}
             viewPhase={viewPhase}
+            drivePhase={drivePhase}
             exitStoryShot={exitStoryShot}
             interactionRig={interactionRig}
             reducedMotion={reducedMotion}
             onEnterComplete={onEnterComplete}
             onExitComplete={onExitComplete}
+            onDriveStartComplete={onDriveStartComplete}
+            onDriveStopComplete={onDriveStopComplete}
             onExteriorDoorOpenComplete={onExteriorDoorOpenComplete}
             onInteriorEnterComplete={onInteriorEnterComplete}
             onInteriorDoorOpenComplete={onInteriorDoorOpenComplete}
@@ -777,8 +789,10 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, exitStoryShot = null, re
               mobileOptimized={profile.modelTier !== 'desktop'}
               shadowResolution={profile.isMobile || profile.lowEnd ? 256 : 512}
             />
+            {driveActive ? <DriveRoad interactionRig={interactionRig} /> : null}
             <CarModel
               anisotropy={gpuConstrained ? Math.min(profile.anisotropy, 4) : profile.anisotropy}
+              driveActive={driveActive}
               interactionRig={interactionRig}
               modelTier={profile.modelTier}
               phase={phase}
