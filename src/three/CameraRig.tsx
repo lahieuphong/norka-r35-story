@@ -110,8 +110,18 @@ const INTERIOR_STORY_SHOTS: ReadonlySet<ShotName> = new Set([
 const TRANSITION_OVERWRITE = false;
 const DRIVE_ACCELERATION_DURATION = 0.8;
 const DRIVE_DECELERATION_DURATION = 1;
+const DRIVE_LIGHT_RAMP_DURATION = 0.52;
+const DRIVE_LIGHT_LAUNCH_DELAY = 0.7;
+const REDUCED_DRIVE_LIGHT_RAMP_DURATION = 0.14;
+const REDUCED_DRIVE_LIGHT_LAUNCH_DELAY = 0.18;
+const DRIVE_LIGHT_FADE_DURATION = 0.34;
+const PRELAUNCH_LIGHT_FADE_MAX_DURATION = 0.3;
+const REDUCED_PRELAUNCH_LIGHT_FADE_MAX_DURATION = 0.14;
 const DRIVE_CRUISE_SPEED = 11.5;
 const DRIVE_WHEEL_RADIUS = 0.33;
+const MIN_SYNCHRONIZED_BRAKE_SPEED = 0.5;
+const MIN_SYNCHRONIZED_BRAKE_DURATION = 0.12;
+const MAX_SYNCHRONIZED_BRAKE_DURATION = DRIVE_DECELERATION_DURATION * 1.8;
 // DriveRoad maps 42 shader periods across a 96-unit plane. At its exact
 // 42/96 travel scale, 4096 units become 1792 complete periods, so long-running
 // numeric state can wrap without changing any visible road phase.
@@ -304,6 +314,7 @@ export function CameraRig({
   const driveSnapshot = useRef<DriveCameraSnapshot | null>(null);
   const driveTour = useRef<readonly DriveCameraShot[]>(getDriveTour(compact, landscape));
   const driveReducedMotion = useRef(reducedMotion);
+  const driveTimelinePausedForVisibility = useRef(false);
   const storySnapshot = useRef<StoryCameraSnapshot | null>(null);
 
   // The scroll-story context owns GSAP tweens on this same rig. Freeze its
@@ -322,6 +333,8 @@ export function CameraRig({
   // it starts. Resizing, rotating, or changing reduced-motion mid-transition
   // must not kill the timeline and send the camera back toward its approach.
   useEffect(() => {
+    let driveLightRenderFrame = 0;
+    let driveLaunchResumeFrame = 0;
     activeTween.current?.kill();
     activeTween.current = null;
     if (phase !== 'story') storyVisualState.glassOpacity = 1;
@@ -455,28 +468,53 @@ export function CameraRig({
       driveReducedMotion.current = reducedMotion;
       interactionRig.driveSpeed = 0;
       interactionRig.driveBlend = 0;
+      interactionRig.driveLightBlend = 0;
       interactionRig.driveDistance = 0;
 
       const firstShot = driveTour.current[0] ?? DESKTOP_DRIVE_TOUR[0]!;
       const cameraDuration = driveReducedMotion.current ? 0.01 : DRIVE_ACCELERATION_DURATION;
+      const lightRampDuration = driveReducedMotion.current
+        ? REDUCED_DRIVE_LIGHT_RAMP_DURATION
+        : DRIVE_LIGHT_RAMP_DURATION;
+      const launchDelay = driveReducedMotion.current
+        ? REDUCED_DRIVE_LIGHT_LAUNCH_DELAY
+        : DRIVE_LIGHT_LAUNCH_DELAY;
       const timeline = gsap.timeline({
         defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
         onUpdate: invalidate,
         onComplete: () => {
           interactionRig.driveSpeed = DRIVE_CRUISE_SPEED;
           interactionRig.driveBlend = 1;
+          interactionRig.driveLightBlend = 1;
           syncCameraToRig(camera, rig, controlsRef.current);
           onDriveStartComplete();
         },
       });
       activeTween.current = timeline;
+      timeline
+        .to(interactionRig, {
+          driveLightBlend: 1,
+          duration: lightRampDuration,
+          ease: 'power2.out',
+        }, 0)
+        .addPause(lightRampDuration, () => {
+          invalidate();
+          driveLightRenderFrame = requestAnimationFrame(() => {
+            if (activeTween.current !== timeline) return;
+            invalidate();
+            driveLaunchResumeFrame = requestAnimationFrame(() => {
+              if (activeTween.current !== timeline) return;
+              timeline.resume();
+            });
+          });
+        });
       if (driveReducedMotion.current) {
         timeline.to(rig.position, {
           x: firstShot.position[0],
           y: firstShot.position[1],
           z: firstShot.position[2],
           duration: cameraDuration,
-        }, 0);
+        }, launchDelay);
       } else {
         const horizontalRadius = Math.hypot(rig.position.x, rig.position.z);
         const firstRadius = Math.hypot(firstShot.position[0], firstShot.position[2]);
@@ -494,33 +532,34 @@ export function CameraRig({
             y: clearanceHeight,
             z: directionZ * clearanceRadius,
             duration: 0.24,
-          }, 0)
+          }, launchDelay)
           .to(rig.position, {
             x: firstShot.position[0],
             y: Math.max(clearanceHeight, firstShot.position[1] + 1.4),
             z: firstShot.position[2],
             duration: 0.28,
-          }, 0.24)
+          }, launchDelay + 0.24)
           .to(rig.position, {
             x: firstShot.position[0],
             y: firstShot.position[1],
             z: firstShot.position[2],
             duration: 0.28,
-          }, 0.52);
+          }, launchDelay + 0.52);
       }
       timeline
-        .to(rig.target, { x: firstShot.target[0], y: firstShot.target[1], z: firstShot.target[2], duration: cameraDuration }, 0)
-        .to(rig, { fov: firstShot.fov, duration: cameraDuration }, 0)
+        .to(rig.target, { x: firstShot.target[0], y: firstShot.target[1], z: firstShot.target[2], duration: cameraDuration }, launchDelay)
+        .to(rig, { fov: firstShot.fov, duration: cameraDuration }, launchDelay)
         .to(interactionRig, {
           driveSpeed: DRIVE_CRUISE_SPEED,
           driveBlend: 1,
           duration: DRIVE_ACCELERATION_DURATION,
-        }, 0);
+        }, launchDelay);
     } else if (phase === 'explore' && viewPhase === 'exterior' && drivePhase === 'driving') {
       const tour = driveTour.current;
       const firstShot = tour[0] ?? DESKTOP_DRIVE_TOUR[0]!;
       interactionRig.driveSpeed = DRIVE_CRUISE_SPEED;
       interactionRig.driveBlend = 1;
+      interactionRig.driveLightBlend = 1;
 
       if (driveReducedMotion.current) {
         rig.position.set(...firstShot.position);
@@ -571,62 +610,230 @@ export function CameraRig({
         rig.target.copy(snapshot.target);
         rig.fov = snapshot.fov;
         syncCameraToRig(camera, rig, controlsRef.current);
+        if (camera instanceof THREE.PerspectiveCamera) {
+          camera.fov = snapshot.fov;
+          camera.updateProjectionMatrix();
+        }
         camera.quaternion.copy(snapshot.quaternion);
         camera.updateMatrixWorld();
       };
+      const initialDriveSpeed = Number.isFinite(interactionRig.driveSpeed)
+        ? Math.max(0, interactionRig.driveSpeed)
+        : 0;
+      const initialDriveDistance = Number.isFinite(interactionRig.driveDistance)
+        ? wrapPositive(interactionRig.driveDistance, DRIVE_DISTANCE_WRAP)
+        : 0;
+      const initialWheelRotation = Number.isFinite(interactionRig.wheelRotation)
+        ? wrapPositive(interactionRig.wheelRotation, FULL_TURN)
+        : 0;
+      const driveWasLaunched = initialDriveSpeed > 0.001
+        || interactionRig.driveBlend > 0.001;
+      const nominalBrakeDistance = initialDriveSpeed * DRIVE_DECELERATION_DURATION / 3;
+      const minimumEndingTurn = initialWheelRotation > 0 ? 1 : 0;
+      const endingTurn = Math.max(
+        minimumEndingTurn,
+        Math.round(
+          (initialWheelRotation + nominalBrakeDistance / DRIVE_WHEEL_RADIUS) / FULL_TURN,
+        ),
+      );
+      const synchronizedBrakeDistance = Math.max(
+        0,
+        (endingTurn * FULL_TURN - initialWheelRotation) * DRIVE_WHEEL_RADIUS,
+      );
+      const synchronizedBrakeDuration = initialDriveSpeed > 0
+        ? (3 * synchronizedBrakeDistance) / initialDriveSpeed
+        : 0;
+      const useSynchronizedBrake = driveWasLaunched
+        && initialDriveSpeed >= MIN_SYNCHRONIZED_BRAKE_SPEED
+        && synchronizedBrakeDuration >= MIN_SYNCHRONIZED_BRAKE_DURATION
+        && synchronizedBrakeDuration <= MAX_SYNCHRONIZED_BRAKE_DURATION;
+      const completeDriveStop = (): void => {
+        restoreDriveSnapshot();
+        interactionRig.driveSpeed = 0;
+        interactionRig.driveBlend = 0;
+        interactionRig.driveLightBlend = 0;
+        interactionRig.driveDistance = 0;
+        interactionRig.wheelRotation = 0;
+        driveSnapshot.current = null;
+        onDriveStopComplete();
+      };
 
-      if (driveReducedMotion.current) restoreDriveSnapshot();
-      activeTween.current = gsap.timeline({
-        defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
-        onUpdate: invalidate,
-        onComplete: () => {
+      if (!useSynchronizedBrake) {
+        interactionRig.driveDistance = initialDriveDistance;
+        interactionRig.wheelRotation = initialWheelRotation;
+        const fadeMaximum = driveReducedMotion.current
+          ? REDUCED_PRELAUNCH_LIGHT_FADE_MAX_DURATION
+          : PRELAUNCH_LIGHT_FADE_MAX_DURATION;
+        const fadeDuration = Math.max(
+          0.01,
+          fadeMaximum * THREE.MathUtils.clamp(interactionRig.driveLightBlend, 0, 1),
+        );
+        const earlyStopDuration = driveWasLaunched
+          ? Math.max(fadeDuration, driveReducedMotion.current ? 0.08 : 0.22)
+          : fadeDuration;
+        const timeline = gsap.timeline({
+          defaults: { ease: 'power2.out', overwrite: TRANSITION_OVERWRITE },
+          onUpdate: invalidate,
+          onComplete: completeDriveStop,
+        });
+        activeTween.current = timeline;
+        if (driveWasLaunched) {
+          const abortBrakeDuration = Math.min(
+            earlyStopDuration,
+            driveReducedMotion.current ? 0.04 : 0.08,
+          );
+          const abortProgress = { value: 0 };
+          const abortTravel = initialDriveSpeed * abortBrakeDuration / 3;
+          const abortWheelEnd = initialWheelRotation + abortTravel / DRIVE_WHEEL_RADIUS;
+          const wheelResetDestination = Math.round(abortWheelEnd / FULL_TURN) * FULL_TURN;
+          timeline
+            .to(rig.position, {
+              x: snapshot.position.x,
+              y: snapshot.position.y,
+              z: snapshot.position.z,
+              duration: earlyStopDuration,
+              ease: 'power2.inOut',
+            }, 0)
+            .to(rig.target, {
+              x: snapshot.target.x,
+              y: snapshot.target.y,
+              z: snapshot.target.z,
+              duration: earlyStopDuration,
+              ease: 'power2.inOut',
+            }, 0)
+            .to(rig, {
+              fov: snapshot.fov,
+              duration: earlyStopDuration,
+              ease: 'power2.inOut',
+            }, 0)
+            // Keep the brief visible road fade physically locked to the wheel,
+            // then settle the now-hidden wheel to its nearest canonical turn.
+            .to(abortProgress, {
+              value: 1,
+              duration: abortBrakeDuration,
+              ease: 'none',
+              onUpdate: () => {
+                const progress = THREE.MathUtils.clamp(abortProgress.value, 0, 1);
+                const travel = initialDriveSpeed * abortBrakeDuration * (
+                  progress - progress ** 2 + progress ** 3 / 3
+                );
+                interactionRig.driveSpeed = initialDriveSpeed * (1 - progress) ** 2;
+                interactionRig.driveDistance = wrapPositive(
+                  initialDriveDistance + travel,
+                  DRIVE_DISTANCE_WRAP,
+                );
+                interactionRig.wheelRotation = initialWheelRotation
+                  + travel / DRIVE_WHEEL_RADIUS;
+              },
+            }, 0)
+            .to(interactionRig, {
+              driveBlend: 0,
+              duration: abortBrakeDuration,
+            }, 0)
+            .to(interactionRig, {
+              wheelRotation: wheelResetDestination,
+              duration: earlyStopDuration - abortBrakeDuration,
+            }, abortBrakeDuration);
+        } else {
           restoreDriveSnapshot();
           interactionRig.driveSpeed = 0;
           interactionRig.driveBlend = 0;
           interactionRig.driveDistance = 0;
-          driveSnapshot.current = null;
-          onDriveStopComplete();
-        },
-      });
-      if (!driveReducedMotion.current) {
-        const horizontalRadius = Math.hypot(rig.position.x, rig.position.z);
-        const snapshotRadius = Math.hypot(snapshot.position.x, snapshot.position.z);
-        const directionX = horizontalRadius > 0.25
-          ? rig.position.x / horizontalRadius
-          : snapshotRadius > 0.25 ? snapshot.position.x / snapshotRadius : 1;
-        const directionZ = horizontalRadius > 0.25
-          ? rig.position.z / horizontalRadius
-          : snapshotRadius > 0.25 ? snapshot.position.z / snapshotRadius : 0;
-        const clearanceRadius = Math.max(7.5, horizontalRadius);
-        const clearanceHeight = Math.max(2.9, rig.position.y, snapshot.position.y + 1.4);
-        activeTween.current
-          .to(rig.position, {
-            x: directionX * clearanceRadius,
-            y: clearanceHeight,
-            z: directionZ * clearanceRadius,
-            duration: 0.28,
+          const wheelResetDestination = initialWheelRotation <= Math.PI ? 0 : FULL_TURN;
+          timeline.to(interactionRig, {
+            wheelRotation: wheelResetDestination,
+            duration: earlyStopDuration,
+          }, 0);
+        }
+        timeline.to(interactionRig, {
+          driveLightBlend: 0,
+          duration: earlyStopDuration,
+        }, 0);
+      } else {
+        if (driveReducedMotion.current) restoreDriveSnapshot();
+        interactionRig.driveSpeed = initialDriveSpeed;
+        interactionRig.driveDistance = initialDriveDistance;
+        interactionRig.wheelRotation = initialWheelRotation;
+        const brakeProgress = { value: 0 };
+        const timeline = gsap.timeline({
+          defaults: { ease: 'power2.inOut', overwrite: TRANSITION_OVERWRITE },
+          onUpdate: invalidate,
+          onComplete: completeDriveStop,
+        });
+        activeTween.current = timeline;
+        if (!driveReducedMotion.current) {
+          const horizontalRadius = Math.hypot(rig.position.x, rig.position.z);
+          const snapshotRadius = Math.hypot(snapshot.position.x, snapshot.position.z);
+          const directionX = horizontalRadius > 0.25
+            ? rig.position.x / horizontalRadius
+            : snapshotRadius > 0.25 ? snapshot.position.x / snapshotRadius : 1;
+          const directionZ = horizontalRadius > 0.25
+            ? rig.position.z / horizontalRadius
+            : snapshotRadius > 0.25 ? snapshot.position.z / snapshotRadius : 0;
+          const clearanceRadius = Math.max(7.5, horizontalRadius);
+          const clearanceHeight = Math.max(2.9, rig.position.y, snapshot.position.y + 1.4);
+          const firstCameraLegDuration = synchronizedBrakeDuration * 0.28;
+          const secondCameraLegDuration = synchronizedBrakeDuration * 0.36;
+          const finalCameraLegStart = synchronizedBrakeDuration * 0.64;
+          timeline
+            .to(rig.position, {
+              x: directionX * clearanceRadius,
+              y: clearanceHeight,
+              z: directionZ * clearanceRadius,
+              duration: firstCameraLegDuration,
+            }, 0)
+            .to(rig.position, {
+              x: snapshot.position.x,
+              y: clearanceHeight,
+              z: snapshot.position.z,
+              duration: secondCameraLegDuration,
+            }, firstCameraLegDuration)
+            .to(rig.position, {
+              x: snapshot.position.x,
+              y: snapshot.position.y,
+              z: snapshot.position.z,
+              duration: secondCameraLegDuration,
+            }, finalCameraLegStart)
+            .to(rig.target, {
+              x: snapshot.target.x,
+              y: snapshot.target.y,
+              z: snapshot.target.z,
+              duration: synchronizedBrakeDuration,
+            }, 0)
+            .to(rig, { fov: snapshot.fov, duration: synchronizedBrakeDuration }, 0);
+        }
+        timeline
+          // Integrating v = v0(1-u)^2 gives this closed-form travel curve.
+          // Its duration is chosen so the wheel ends on an exact full turn.
+          .to(brakeProgress, {
+            value: 1,
+            duration: synchronizedBrakeDuration,
+            ease: 'none',
+            onUpdate: () => {
+              const progress = THREE.MathUtils.clamp(brakeProgress.value, 0, 1);
+              const travel = initialDriveSpeed * synchronizedBrakeDuration * (
+                progress - progress ** 2 + progress ** 3 / 3
+              );
+              interactionRig.driveSpeed = initialDriveSpeed * (1 - progress) ** 2;
+              interactionRig.driveDistance = wrapPositive(
+                initialDriveDistance + travel,
+                DRIVE_DISTANCE_WRAP,
+              );
+              interactionRig.wheelRotation = initialWheelRotation
+                + travel / DRIVE_WHEEL_RADIUS;
+            },
           }, 0)
-          .to(rig.position, {
-            x: snapshot.position.x,
-            y: clearanceHeight,
-            z: snapshot.position.z,
-            duration: 0.36,
-          }, 0.28)
-          .to(rig.position, {
-            x: snapshot.position.x,
-            y: snapshot.position.y,
-            z: snapshot.position.z,
-            duration: 0.36,
-          }, 0.64)
-          .to(rig.target, { x: snapshot.target.x, y: snapshot.target.y, z: snapshot.target.z, duration: DRIVE_DECELERATION_DURATION }, 0)
-          .to(rig, { fov: snapshot.fov, duration: DRIVE_DECELERATION_DURATION }, 0);
+          .to(interactionRig, {
+            driveBlend: 0,
+            duration: synchronizedBrakeDuration,
+            ease: 'power2.out',
+          }, 0)
+          .to(interactionRig, {
+            driveLightBlend: 0,
+            duration: DRIVE_LIGHT_FADE_DURATION,
+            ease: 'power2.out',
+          }, synchronizedBrakeDuration);
       }
-      activeTween.current.to(interactionRig, {
-        driveSpeed: 0,
-        driveBlend: 0,
-        duration: DRIVE_DECELERATION_DURATION,
-        ease: 'power2.out',
-      }, 0);
     } else if (phase === 'explore' && (
       viewPhase === 'openingExteriorDoor'
       || viewPhase === 'openingInteriorDoor'
@@ -751,9 +958,13 @@ export function CameraRig({
       interactionRig.steeringAngle = 0;
       interactionRig.driveSpeed = 0;
       interactionRig.driveBlend = 0;
+      interactionRig.driveLightBlend = 0;
       interactionRig.driveDistance = 0;
+      interactionRig.wheelRotation = 0;
     }
     return () => {
+      cancelAnimationFrame(driveLightRenderFrame);
+      cancelAnimationFrame(driveLaunchResumeFrame);
       activeTween.current?.kill();
       activeTween.current = null;
       if (phase === 'exiting' && exitStoryShot && INTERIOR_STORY_SHOTS.has(exitStoryShot)) {
@@ -762,14 +973,43 @@ export function CameraRig({
     };
   }, [camera, controlsRef, drivePhase, exitStoryShot, interactionRig, invalidate, onDriveStartComplete, onDriveStopComplete, onEnterComplete, onExitComplete, onExteriorDoorCloseComplete, onExteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorExitComplete, onInteriorExitDoorOpenComplete, phase, rig, viewPhase]);
 
+  useEffect(() => {
+    if (!isDriveActive(drivePhase)) {
+      driveTimelinePausedForVisibility.current = false;
+      return;
+    }
+    const syncDriveTimelineVisibility = (): void => {
+      const timeline = activeTween.current;
+      if (document.visibilityState === 'hidden') {
+        if (!timeline || timeline.paused()) return;
+        timeline.pause();
+        driveTimelinePausedForVisibility.current = true;
+        return;
+      }
+      if (!driveTimelinePausedForVisibility.current) return;
+      driveTimelinePausedForVisibility.current = false;
+      timeline?.resume();
+      invalidate();
+    };
+
+    document.addEventListener('visibilitychange', syncDriveTimelineVisibility);
+    syncDriveTimelineVisibility();
+    return () => {
+      document.removeEventListener('visibilitychange', syncDriveTimelineVisibility);
+      driveTimelinePausedForVisibility.current = false;
+    };
+  }, [drivePhase, invalidate]);
+
   useEffect(() => () => {
     interactionRig.doorProgress = 0;
     interactionRig.glassOpacity = 1;
     interactionRig.steeringAngle = 0;
     interactionRig.driveSpeed = 0;
     interactionRig.driveBlend = 0;
+    interactionRig.driveLightBlend = 0;
     interactionRig.driveDistance = 0;
     interactionRig.wheelRotation = 0;
+    driveTimelinePausedForVisibility.current = false;
   }, [interactionRig]);
 
   useFrame((_, delta) => {
@@ -777,7 +1017,7 @@ export function CameraRig({
     const driveActive = isDriveActive(drivePhase);
     const frameTime = Math.min(Math.max(delta, 0), 0.1);
     const driveSpeed = Math.max(0, interactionRig.driveSpeed);
-    if (driveActive && driveSpeed > 0 && frameTime > 0) {
+    if (drivePhase !== 'stopping' && driveActive && driveSpeed > 0 && frameTime > 0) {
       interactionRig.driveDistance = wrapPositive(
         interactionRig.driveDistance + driveSpeed * frameTime,
         DRIVE_DISTANCE_WRAP,

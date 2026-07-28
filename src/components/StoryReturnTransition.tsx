@@ -1,7 +1,7 @@
 import { useLayoutEffect } from 'react';
 
 export type StoryReturnPhase = 'covering' | 'revealing';
-export type StoryTransitionIntent = 'return' | 'intro';
+type StoryTransitionIntent = 'return' | 'intro';
 
 export const PORTAL_TRANSITION_TIMING = {
   cover: 760,

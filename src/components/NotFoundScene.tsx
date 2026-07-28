@@ -1,4 +1,4 @@
-import { useCallback, useRef, type PointerEvent } from 'react';
+import { useCallback, useEffect, useRef, type PointerEvent } from 'react';
 
 interface Props {
   readonly reducedMotion: boolean;
@@ -17,6 +17,10 @@ export function NotFoundScene({ reducedMotion }: Props) {
     stage.style.removeProperty('--not-found-pitch');
     stage.style.removeProperty('--not-found-yaw');
   }, []);
+
+  useEffect(() => {
+    if (reducedMotion) resetTilt();
+  }, [reducedMotion, resetTilt]);
 
   const updateTilt = useCallback((event: PointerEvent<HTMLDivElement>): void => {
     if (reducedMotion || event.pointerType === 'touch') return;

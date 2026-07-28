@@ -3,3 +3,16 @@ dist
 .DS_Store
 *.local
 .vite
+
+# Local tooling, test output, and secrets
+.tmp-*/
+*.log
+coverage/
+test-results/
+playwright-report/
+runtime-*.mjs
+runtime-*.json
+runtime-*.png
+.env
+.env.*
+!.env.example

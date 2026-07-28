@@ -1,3 +1,5 @@
+import { STORY_SHOT_ORDER } from './cameraShots';
+
 export interface StoryProgressSnapshot {
   readonly progress: number;
   readonly current: number;
@@ -6,7 +8,8 @@ export interface StoryProgressSnapshot {
 
 type StoryProgressListener = (snapshot: StoryProgressSnapshot) => void;
 
-let snapshot: StoryProgressSnapshot = { progress: 0, current: 1, total: 12 };
+export const STORY_SECTION_COUNT = STORY_SHOT_ORDER.length;
+let snapshot: StoryProgressSnapshot = { progress: 0, current: 1, total: STORY_SECTION_COUNT };
 const listeners = new Set<StoryProgressListener>();
 
 export function publishStoryProgress(progress: number, current: number, total: number): void {

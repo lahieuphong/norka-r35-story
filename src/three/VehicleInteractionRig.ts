@@ -9,6 +9,8 @@ export interface VehicleInteractionRig {
   driveSpeed: number;
   /** 0 = static showroom ground, 1 = fully blended driving environment. */
   driveBlend: number;
+  /** 0 = exterior vehicle lights off, 1 = fully illuminated. */
+  driveLightBlend: number;
   /** Wrapped road travel in model units, used by procedural scenery. */
   driveDistance: number;
   /** Wrapped local-X wheel rotation in radians. */
@@ -22,6 +24,7 @@ export function createVehicleInteractionRig(): VehicleInteractionRig {
     steeringAngle: 0,
     driveSpeed: 0,
     driveBlend: 0,
+    driveLightBlend: 0,
     driveDistance: 0,
     wheelRotation: 0,
   };

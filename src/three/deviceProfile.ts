@@ -13,17 +13,12 @@ export interface DeviceProfile {
   readonly anisotropy: number;
 }
 
-interface NavigatorWithMemory extends Navigator {
-  readonly deviceMemory?: number;
-}
-
 function readHardwareHints(): { readonly touch: boolean; readonly lowEnd: boolean } {
-  const navigatorWithMemory = navigator as NavigatorWithMemory;
   const touch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
   // Browsers commonly clamp these hints to 4 for privacy, including on phones
   // that can comfortably render this scene. Reserve the constrained tier for
   // genuinely small devices instead of degrading the majority of mobile GPUs.
-  const lowMemory = typeof navigatorWithMemory.deviceMemory === 'number' && navigatorWithMemory.deviceMemory <= 2;
+  const lowMemory = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 2;
   const lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2;
   return { touch, lowEnd: lowMemory || lowCpu };
 }

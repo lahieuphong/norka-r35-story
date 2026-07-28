@@ -3,7 +3,6 @@ import { DRIVER_DOOR_HINGE } from './interiorTransitionShots';
 
 export interface DriverDoorAssembly {
   readonly pivot: THREE.Group;
-  readonly extractedPartCount: number;
 }
 
 interface ComponentBounds {
@@ -254,6 +253,8 @@ export function createDriverDoorAssembly(scene: THREE.Group): DriverDoorAssembly
     if (materialName && partitionIndexedMesh(mesh, materialName, flattenedInterior, pivot)) extractedPartCount += 1;
   });
 
+  if (extractedPartCount === 0 && !namedInteriorDoor && !namedDoorActuator) return null;
+
   scene.add(pivot);
   scene.updateWorldMatrix(true, true);
   if (namedInteriorDoor) {
@@ -265,5 +266,5 @@ export function createDriverDoorAssembly(scene: THREE.Group): DriverDoorAssembly
     extractedPartCount += 1;
   }
   pivot.updateWorldMatrix(true, true);
-  return extractedPartCount > 0 ? { pivot, extractedPartCount } : null;
+  return { pivot };
 }

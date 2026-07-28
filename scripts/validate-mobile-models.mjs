@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { getBounds, Logger, NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { inspect, uninstance } from '@gltf-transform/functions';
@@ -15,6 +15,11 @@ const files = {
   'mobile-low': 'public/models/norka-r35-mobile-low.glb',
   'mobile-fallback': 'public/models/norka-r35-mobile-fallback.glb',
 };
+const runtimeFiles = {
+  ...files,
+  desktop: 'public/models/norka-r35-desktop.glb',
+  fallback: 'public/models/norka-r35-fallback.glb',
+};
 const heroTextures = new Set([
   'norka-paint-reference',
   'norka-carbon-reference',
@@ -28,8 +33,35 @@ const wheelSuspensionPairs = [
   ['WHEEL_RR_107', 'SUSP_RR_62'],
 ];
 const wheelSuspensionNodeNames = wheelSuspensionPairs.flat();
-const maxMobilePrimitiveDefinitions = 102;
-const maxMobileBasePrimitiveDraws = 127;
+// These five exact hierarchies are the complete mobile light contract.
+const protectedLightContracts = new Map([
+  ['highbeam_lens_14', { childName: 'Object_33', meshName: 'Object_13', materialNames: ['ext_chrome'] }],
+  ['lowbeam_lens_16', { childName: 'Object_37', meshName: 'Object_15', materialNames: ['ext_chrome'] }],
+  ['parklight_leds_17', { childName: 'Object_39', meshName: 'Object_16', materialNames: ['ext_chrome'] }],
+  ['DRL_20', { childName: 'Object_43', meshName: 'Object_18', materialNames: ['material'] }],
+  ['licenseplatelight_15', { childName: 'Object_35', meshName: 'Object_14', materialNames: ['ext_chrome'] }],
+]);
+const protectedLightNodeNames = [...protectedLightContracts.keys()];
+const maxMobilePrimitiveDefinitions = 107;
+const maxMobileBasePrimitiveDraws = 132;
+
+async function assertRuntimeModelsAreDracoFree() {
+  for (const [variant, file] of Object.entries(runtimeFiles)) {
+    const glb = await readFile(file);
+    assert.equal(glb.toString('ascii', 0, 4), 'glTF', `${variant}: invalid GLB header`);
+    const jsonLength = glb.readUInt32LE(12);
+    assert.equal(glb.readUInt32LE(16), 0x4e4f534a, `${variant}: first GLB chunk must be JSON`);
+    const json = JSON.parse(glb.subarray(20, 20 + jsonLength).toString('utf8'));
+    const declaredExtensions = new Set([
+      ...(json.extensionsUsed ?? []),
+      ...(json.extensionsRequired ?? []),
+    ]);
+    assert.ok(
+      !declaredExtensions.has('KHR_draco_mesh_compression'),
+      `${variant}: runtime GLB must remain Draco-free; CarModel only configures Meshopt`,
+    );
+  }
+}
 
 function readPivotMetrics(root) {
   return Object.fromEntries(wheelSuspensionNodeNames.map((name) => {
@@ -58,6 +90,46 @@ function readPivotMetrics(root) {
   }));
 }
 
+function readProtectedLightMetrics(root) {
+  return Object.fromEntries(protectedLightNodeNames.map((name) => {
+    const matches = root.listNodes().filter((node) => node.getName() === name);
+    if (matches.length !== 1) return [name, { count: matches.length }];
+
+    const node = matches[0];
+    const materialNames = [];
+    const meshNames = [];
+    let descendantMeshes = 0;
+    let descendantNodes = 0;
+    let descendantPrimitives = 0;
+    let instancedNodes = 0;
+    node.traverse((descendant) => {
+      descendantNodes += 1;
+      if (descendant.getExtension('EXT_mesh_gpu_instancing')) instancedNodes += 1;
+      const mesh = descendant.getMesh();
+      if (!mesh) return;
+      descendantMeshes += 1;
+      meshNames.push(mesh.getName());
+      for (const primitive of mesh.listPrimitives()) {
+        descendantPrimitives += 1;
+        materialNames.push(primitive.getMaterial()?.getName() ?? '(missing material)');
+      }
+    });
+    return [name, {
+      bounds: getBounds(node),
+      count: 1,
+      descendantMeshes,
+      descendantNodes,
+      descendantPrimitives,
+      directChildNames: node.listChildren().map((child) => child.getName()).sort(),
+      hasMesh: Boolean(node.getMesh()),
+      instancedNodes,
+      materialNames: materialNames.sort(),
+      meshNames: meshNames.sort(),
+      worldMatrix: [...node.getWorldMatrix()],
+    }];
+  }));
+}
+
 async function readMetrics(file) {
   const document = await io.read(file);
   document.setLogger(new Logger(Logger.Verbosity.SILENT));
@@ -79,6 +151,7 @@ async function readMetrics(file) {
       basePrimitiveDraws += node.getMesh()?.listPrimitives().length ?? 0;
     });
   }
+  const protectedLightMetrics = readProtectedLightMetrics(root);
   if (extensions.has('EXT_mesh_gpu_instancing')) await document.transform(uninstance());
   const scene = root.listScenes()[0];
   assert.ok(scene, `${file}: missing scene`);
@@ -91,6 +164,7 @@ async function readMetrics(file) {
     materialNames,
     nodeNames: new Set(root.listNodes().map((node) => node.getName())),
     pivotMetrics: readPivotMetrics(root),
+    protectedLightMetrics,
     primitiveDefinitions,
     renderVertices: report.scenes.properties[0]?.renderVertexCount ?? 0,
     textureSizes,
@@ -142,6 +216,36 @@ function assertWheelSuspensionPivots(metrics, originalMetrics, label) {
   }
 }
 
+function assertProtectedLightSubtrees(metrics, originalMetrics, label) {
+  for (const [name, { childName, meshName, materialNames }] of protectedLightContracts) {
+    const actual = metrics.protectedLightMetrics[name];
+    const expected = originalMetrics.protectedLightMetrics[name];
+    assert.equal(actual.count, 1, `${label}: expected exactly one protected light root ${name}, found ${actual.count}`);
+    assert.equal(expected.count, 1, `original: expected exactly one source light root ${name}, found ${expected.count}`);
+    assert.equal(actual.hasMesh, false, `${label}: ${name} must remain a mesh-free transform root`);
+    assert.equal(actual.instancedNodes, 0, `${label}: ${name} subtree must remain outside instanced batches`);
+    assert.deepEqual(expected.directChildNames, [childName], `original: ${name} source child contract changed`);
+    assert.deepEqual(actual.directChildNames, [childName], `${label}: ${name} direct child changed`);
+    assert.equal(actual.descendantNodes, expected.descendantNodes, `${label}: ${name} node subtree changed`);
+    assert.equal(actual.descendantMeshes, expected.descendantMeshes, `${label}: ${name} mesh subtree changed`);
+    assert.equal(actual.descendantPrimitives, expected.descendantPrimitives, `${label}: ${name} primitive subtree changed`);
+    assert.deepEqual(expected.meshNames, [meshName], `original: ${name} source mesh contract changed`);
+    assert.deepEqual(actual.meshNames, [meshName], `${label}: ${name} mesh contract changed`);
+    assert.deepEqual(
+      expected.materialNames,
+      materialNames,
+      `original: ${name} source material contract changed`,
+    );
+    assert.deepEqual(
+      actual.materialNames,
+      materialNames,
+      `${label}: ${name} material contract changed`,
+    );
+    assertArrayClose(actual.worldMatrix, expected.worldMatrix, `${label}: ${name} world matrix`);
+    assertBoundsClose(actual.bounds, expected.bounds, `${label}: ${name} bounds`);
+  }
+}
+
 function assertTextureCaps(metrics, heroCap, secondaryCap, label) {
   for (const texture of metrics.textureSizes) {
     const cap = heroTextures.has(texture.name) ? heroCap : secondaryCap;
@@ -151,6 +255,8 @@ function assertTextureCaps(metrics, heroCap, secondaryCap, label) {
     );
   }
 }
+
+await assertRuntimeModelsAreDracoFree();
 
 const original = await readMetrics(files.original);
 const results = {};
@@ -168,6 +274,7 @@ for (const [variant, file] of Object.entries(files).slice(1)) {
   assert.ok(metrics.nodeNames.has('DOOR_INT_L_anim_160'), `${variant}: protected driver-door actuator missing`);
   assert.ok(metrics.nodeNames.has('STEER_HR_232'), `${variant}: protected steering-wheel pivot missing`);
   assertWheelSuspensionPivots(metrics, original, variant);
+  assertProtectedLightSubtrees(metrics, original, variant);
   assertBoundsClose(metrics.bounds, original.bounds, variant);
 }
 

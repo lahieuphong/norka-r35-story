@@ -38,7 +38,7 @@ const MATERIAL_PROFILES = {
   ext_carbon: { metalness: 1, roughness: 0.9005741731784325, specularIntensity: 0.6872401896843876, map: 'carbon', normal: { channel: 2, repeat: 75.32969931927695 } },
   ext_chrome: { metalness: 1, roughness: 0.05, specularIntensity: 1 },
   darkgrayplastic: { metalness: 1, roughness: 0.8700978898221403, specularIntensity: 0.3, color: [0.007726100576177697, 0.007726100576177697, 0.007726100576177697], normal: { channel: 2, repeat: 86.58520248957117 }, clearcoat: 0.010666699174702246, clearcoatRoughness: 0.13257183259987076 },
-  material: { metalness: 1, roughness: 0.23009593934000558, specularIntensity: 1 },
+  material: { metalness: 1, roughness: 0.23009593934000558, specularIntensity: 1, color: [0.4793201830913402, 0.48514994004665124, 0.4793201830913402] },
   CSR2_Engine: { metalness: 1, roughness: 1, specularIntensity: 1 },
   CSR2_EngineA: { metalness: 1, roughness: 1, specularIntensity: 1 },
   CSR2_SpecularTint: { metalness: 0.8335263497945898, roughness: 0.24228645268252244, specularIntensity: 0.4, clearcoat: 1, clearcoatRoughness: 0.18133388596993819 },
@@ -46,8 +46,8 @@ const MATERIAL_PROFILES = {
   ext_grill: { metalness: 1, roughness: 0.32152478940888196, specularIntensity: 0.2, color: [0.015876293507004053, 0.015876293507004053, 0.015876293507004053], opacity: 1 },
   CSR2_Badge: { metalness: 0, roughness: 0.5, specularIntensity: 0.4 },
   region_plates: { metalness: 0.7116212163694212, roughness: 0.5897160829442527, specularIntensity: 0.4, color: [0.018704943955272956, 0.018704943955272956, 0.018704943955272956], normal: { channel: 0, repeat: 7.270133001658157 } },
-  tail_lights_red: { metalness: 1, roughness: 0.10209554924357864, specularIntensity: 0.8, opacity: 0.7969548097670393, clearcoat: 1, clearcoatRoughness: 0 },
-  redled: { metalness: 0, roughness: 0.05, specularIntensity: 1 },
+  tail_lights_red: { metalness: 1, roughness: 0.10209554924357864, specularIntensity: 0.8, color: [0.0781874217970207, 0, 0], opacity: 0.7969548097670393, clearcoat: 1, clearcoatRoughness: 0 },
+  redled: { metalness: 0, roughness: 0.05, specularIntensity: 1, color: [0.06847816983662759, 0, 0] },
   tail_light_reverse_indicator: { metalness: 1, roughness: 0, specularIntensity: 0.8, color: [0.12256760431052603, 0.12256760431052603, 0.12256760431052603], normalScale: 0.15085760261364606, opacity: 0.5104777462178932, clearcoat: 1, clearcoatRoughness: 0 },
   side_mirror_glass: { metalness: 0.9432409698772415, roughness: 0, specularIntensity: 0.8 },
   caliperrs: { metalness: 1, roughness: 0.4921919762041179, specularIntensity: 0.2 },
@@ -194,11 +194,6 @@ export function applyMaterialAdjustments(
     object.receiveShadow = false;
 
     const materials = Array.isArray(object.material) ? object.material : [object.material];
-    if (materials.some((material) => SHADOWLESS_GLASS.has(material.name))) {
-      object.castShadow = false;
-      object.receiveShadow = false;
-    }
-
     materials.forEach((material) => {
       if (visited.has(material)) return;
       visited.add(material);

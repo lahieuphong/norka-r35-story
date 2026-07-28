@@ -3,7 +3,6 @@ import { useGLTF } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
 import type { GLTFLoader } from 'three-stdlib';
@@ -12,10 +11,12 @@ import { DoorHotspot } from './DoorHotspot';
 import { createDriverDoorAssembly } from './doorAssembly';
 import { isInteriorOrbitEnabled, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { DRIVER_DOOR_OPEN_ANGLE } from './interiorTransitionShots';
-import { computeModelNormalization, type ModelNormalization } from './modelNormalization';
+import { computeModelNormalization } from './modelNormalization';
 import { storyVisualState } from './storyState';
 import type { ModelTier } from './deviceProfile';
 import type { VehicleInteractionRig } from './VehicleInteractionRig';
+import { VehicleLightEffects } from './VehicleLightEffects';
+import { createVehicleLightAssembly } from './vehicleLightAssembly';
 import { createSteeringWheelAssembly, STEERING_WHEEL_LOCAL_AXIS } from './steeringWheel';
 
 const URLS = {
@@ -59,7 +60,7 @@ function selectRuntimeVariant(renderer: THREE.WebGLRenderer, modelTier: ModelTie
 }
 export interface ModelAttribution { readonly title: string; readonly author: string; readonly license: string; }
 export const DEFAULT_MODEL_ATTRIBUTION: ModelAttribution = { title: 'unpacked-norka_varis_r35', author: 'MattDoesBlender', license: 'CC BY-NC-SA 4.0' };
-export interface ModelReadyDetails { readonly normalization: ModelNormalization; readonly nodeCount: number; readonly meshCount: number; readonly materialCount: number; readonly attribution: ModelAttribution; }
+export interface ModelReadyDetails { readonly attribution: ModelAttribution; }
 interface Props {
   readonly anisotropy: number;
   readonly driveActive: boolean;
@@ -113,13 +114,11 @@ interface SteeringDragState {
 }
 
 const KTX2_LOADERS = new WeakMap<THREE.WebGLRenderer, KTX2Loader>();
-const DRACO_LOADERS = new WeakMap<THREE.WebGLRenderer, DRACOLoader>();
 const GLTF_CLEAR_TIMERS = new Map<string, number>();
 const RESOURCE_DISPOSAL_TIMERS = new WeakMap<object, number>();
 let meshoptWorkerCount = 0;
 
 interface RuntimeGLTFLoader {
-  setDRACOLoader(value: DRACOLoader): void;
   setKTX2Loader(value: KTX2Loader): void;
   setMeshoptDecoder(value: typeof MeshoptDecoder): void;
 }
@@ -151,15 +150,6 @@ function configureModelDecoders(
     runtimeLoader.setKTX2Loader(ktx2Loader);
   }
 
-  let dracoLoader = DRACO_LOADERS.get(renderer);
-  if (!dracoLoader) {
-    // Three resolves its decoder binaries through local Vite assets. Do not
-    // preload them: current NORKA variants use Meshopt, not Draco.
-    dracoLoader = new DRACOLoader().setWorkerLimit(1);
-    DRACO_LOADERS.set(renderer, dracoLoader);
-  }
-  runtimeLoader.setDRACOLoader(dracoLoader);
-
   // Meshopt is required by every optimized GLB. Async workers prevent hundreds
   // of compressed buffer views from stalling the loading animation/main thread.
   setMeshoptWorkerCount(modelTier === 'desktop' ? 2 : 1);
@@ -171,11 +161,6 @@ export function releaseModelDecoders(renderer: THREE.WebGLRenderer): void {
   if (ktx2Loader) {
     ktx2Loader.dispose();
     KTX2_LOADERS.delete(renderer);
-  }
-  const dracoLoader = DRACO_LOADERS.get(renderer);
-  if (dracoLoader) {
-    dracoLoader.dispose();
-    DRACO_LOADERS.delete(renderer);
   }
   setMeshoptWorkerCount(0);
 }
@@ -261,7 +246,8 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
     configureModelDecoders(loader, renderer, modelVariant, modelTier);
   }, [modelTier, modelVariant, renderer]);
   // Decoder configuration is explicit above. Keeping both Drei switches false
-  // prevents its shared CDN Draco loader/default Meshopt decoder overwriting it.
+  // avoids its shared CDN Draco loader and keeps this model's Meshopt worker
+  // lifecycle under local control.
   const gltf = useGLTF(modelUrl, false, false, extendLoader);
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
   // Texture sampling is deliberately fixed for this mounted model. Responsive
@@ -287,15 +273,14 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
       textureAnisotropy.current,
       modelTier !== 'desktop',
     );
-    let nodeCount = 0;
-    let meshCount = 0;
+    // Resolve and isolate exact semantic lamps only after their final PBR
+    // profiles have been applied. Contract drift fails closed with all lights off.
+    const vehicleLights = createVehicleLightAssembly(scene);
     const geometries = new Set<THREE.BufferGeometry>();
     const materials = new Set<THREE.Material>();
     const glassMaterials: Array<{ readonly material: THREE.MeshStandardMaterial; readonly baseOpacity: number }> = [];
     scene.traverse((object) => {
-      nodeCount += 1;
       if (!(object instanceof THREE.Mesh)) return;
-      meshCount += 1;
       geometries.add(object.geometry);
       (Array.isArray(object.material) ? object.material : [object.material]).forEach((material) => {
         if (materials.has(material)) return;
@@ -308,19 +293,19 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
     const attribution = readAttribution(gltf.parser.json);
     const textures = new Set<THREE.Texture>();
     materials.forEach((material) => listMaterialTextures(material).forEach((texture) => textures.add(texture)));
+    const ownedMaterials = new Set(materials);
+    vehicleLights?.detachedMaterials.forEach((material) => ownedMaterials.add(material));
     return {
       scene,
       normalization,
-      nodeCount,
-      meshCount,
-      materialCount: materials.size,
       attribution,
       driverDoor,
       steeringWheel,
       wheels,
       glassMaterials,
+      vehicleLights,
       ownedGeometries: [...geometries],
-      ownedMaterials: [...materials],
+      ownedMaterials: [...ownedMaterials],
       ownedTextures: [...textures],
     };
   }, [gltf.parser.json, gltf.scene, modelTier]);
@@ -475,6 +460,7 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
     }
     return () => {
       const timer = window.setTimeout(() => {
+        prepared.vehicleLights?.dispose();
         prepared.ownedGeometries.forEach((geometry) => geometry.dispose());
         prepared.ownedMaterials.forEach((material) => material.dispose());
         prepared.ownedTextures.forEach((texture) => texture.dispose());
@@ -513,21 +499,27 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
       });
     }
     const opacity = THREE.MathUtils.clamp(storyVisualState.glassOpacity * interactionRig.glassOpacity, 0, 1);
-    if (Math.abs(renderedGlassOpacity.current - opacity) < 0.001) return;
-    renderedGlassOpacity.current = opacity;
-    prepared.glassMaterials.forEach(({ material, baseOpacity }) => {
-      material.opacity = baseOpacity * opacity;
-    });
+    if (!(Math.abs(renderedGlassOpacity.current - opacity) < 0.001)) {
+      renderedGlassOpacity.current = opacity;
+      prepared.glassMaterials.forEach(({ material, baseOpacity }) => {
+        material.opacity = baseOpacity * opacity;
+      });
+    }
+    prepared.vehicleLights?.render(interactionRig.driveLightBlend);
   });
   useLayoutEffect(() => {
     const selection = modelVariant + ':' + modelTier;
     if (reportedSelection.current === selection) return;
     reportedSelection.current = selection;
-    onReady({ normalization: prepared.normalization, nodeCount: prepared.nodeCount, meshCount: prepared.meshCount, materialCount: prepared.materialCount, attribution: prepared.attribution });
+    onReady({ attribution: prepared.attribution });
   }, [modelTier, modelVariant, onReady, prepared]);
   return (
     <group position={prepared.normalization.offset}>
       <primitive object={prepared.scene} dispose={null} />
+      {prepared.vehicleLights ? <primitive object={prepared.vehicleLights.spotRig} dispose={null} /> : null}
+      {prepared.vehicleLights
+        ? <VehicleLightEffects interactionRig={interactionRig} mobileOptimized={modelTier !== 'desktop'} />
+        : null}
       <DoorHotspot
         available={Boolean(prepared.driverDoor) && !driveActive}
         phase={phase}

@@ -33,7 +33,6 @@ export function LoadingScreen({ sceneReady, failed, reducedMotion, onDismissed }
     '--loading-heat-color': `hsl(${Math.round(209 - heatIntensity * 5)}, ${Math.round(30 + heatIntensity * 58)}%, ${Math.round(62 - heatIntensity * 28)}%)`,
     '--loading-heat-shadow': `rgba(6, 102, 166, ${(0.04 + heatIntensity * 0.25).toFixed(3)})`,
     '--loading-heat-blur': `${(0.15 + heatIntensity * 1.15).toFixed(2)}rem`,
-    backgroundColor: portalCovered ? 'transparent' : undefined,
   };
 
   useLayoutEffect(() => {

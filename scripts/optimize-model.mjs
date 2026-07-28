@@ -16,13 +16,13 @@ import sharp from 'sharp';
 
 const input = resolve('public/models/norka-r35-original.glb');
 const referenceInputs = {
-  paint: resolve('public/textures/paint.png'),
-  carbon: resolve('public/textures/carbon_fiberao.dds_10_1.png'),
-  carbonNormal: resolve('public/textures/carbon_n_vecarz.png'),
-  glass: resolve('public/textures/glass.png'),
-  seams: resolve('public/textures/cuciture_57.png'),
-  decals: resolve('public/textures/INT_Decals_51.png'),
-  decalsNormal: resolve('public/textures/INT_Decals_NM.png'),
+  paint: resolve('source-assets/textures/paint.png'),
+  carbon: resolve('source-assets/textures/carbon_fiberao.dds_10_1.png'),
+  carbonNormal: resolve('source-assets/textures/carbon_n_vecarz.png'),
+  glass: resolve('source-assets/textures/glass.png'),
+  seams: resolve('source-assets/textures/cuciture_57.png'),
+  decals: resolve('source-assets/textures/INT_Decals_51.png'),
+  decalsNormal: resolve('source-assets/textures/INT_Decals_NM.png'),
 };
 await Promise.all([access(input), ...Object.values(referenceInputs).map((path) => access(path))]);
 
@@ -158,14 +158,15 @@ function isolateTransparentMeshInstances(document) {
 
 async function optimizeMobileGeometry(document) {
   // Material identities and names drive runtime profiles, so intentionally do
-  // not include MATERIAL or TEXTURE in deduplication. Dynamic subtrees are
-  // detached before instancing so neither their pivots nor their mesh children
-  // can be absorbed into static EXT_mesh_gpu_instancing batches.
+  // not include MATERIAL or TEXTURE in deduplication. Runtime-addressable
+  // subtrees are detached before instancing so neither their named roots nor
+  // their mesh children can be absorbed into static batches or the mobile
+  // join.
   await document.transform(dedup({
     propertyTypes: [PropertyType.ACCESSOR, PropertyType.MESH],
   }));
   isolateTransparentMeshInstances(document);
-  const protectedNodes = detachInteractiveNodes(document);
+  const protectedNodes = detachProtectedMobileSubtrees(document);
   await document.transform(instance({ min: 2 }));
   await document.transform(
     // Cleanup stays deferred until the protected subtrees are reattached;
@@ -177,7 +178,7 @@ async function optimizeMobileGeometry(document) {
         .every((primitive) => primitive.getMaterial()?.getAlphaMode() === 'OPAQUE') ?? false,
     }),
   );
-  restoreInteractiveNodes(document, protectedNodes);
+  restoreProtectedMobileSubtrees(document, protectedNodes);
   // `cleanup:false` above intentionally retains orphaned pre-join resources
   // until the interactive nodes are safely reattached. They can now be discarded before
   // quantization inspects every remaining primitive.
@@ -198,26 +199,44 @@ const protectedInteractiveNodeNames = [
   'SUSP_RR_62',
 ];
 
-function detachInteractiveNodes(document) {
+// These exact semantic transform roots must remain runtime-addressable.
+const protectedLightNodeNames = [
+  'highbeam_lens_14',
+  'lowbeam_lens_16',
+  'parklight_leds_17',
+  'DRL_20',
+  'licenseplatelight_15',
+];
+
+const protectedMobileSubtreeNames = [
+  ...protectedInteractiveNodeNames,
+  ...protectedLightNodeNames,
+];
+
+function detachProtectedMobileSubtrees(document) {
   const root = document.getRoot();
-  return protectedInteractiveNodeNames.map((name) => {
-    const node = root.listNodes().find((candidate) => candidate.getName() === name);
+  return protectedMobileSubtreeNames.map((name) => {
+    const matches = root.listNodes().filter((candidate) => candidate.getName() === name);
+    const node = matches[0];
     const parent = node?.getParentNode();
-    if (!node || !parent) throw new Error(`The source model is missing protected interactive node ${name}.`);
+    if (matches.length !== 1 || !node || !parent) {
+      throw new Error(`The source model must contain exactly one attached protected mobile subtree ${name}; found ${matches.length}.`);
+    }
     const worldMatrix = [...node.getWorldMatrix()];
     parent.removeChild(node);
     return { node, worldMatrix };
   });
 }
 
-function restoreInteractiveNodes(document, protectedNodes) {
+function restoreProtectedMobileSubtrees(document, protectedNodes) {
   const scene = document.getRoot().listScenes()[0];
   if (!scene) throw new Error('The source model is missing its primary scene.');
   for (const { node, worldMatrix } of protectedNodes) {
     // Mobile instance/flatten/join is intentionally run while the animated
-    // door, steering, wheel, and suspension subtrees are detached. Reattaching
-    // with their previous world matrices preserves the authored pivots while
-    // every other static mesh still uses the low-draw-call mobile pipeline.
+    // door, steering, wheel, suspension, and runtime-addressable light
+    // subtrees are detached. Reattaching with their previous world matrices
+    // preserves authored pivots and bounds while every other static mesh still
+    // uses the low-draw-call mobile pipeline.
     node.setMatrix(worldMatrix);
     scene.addChild(node);
   }

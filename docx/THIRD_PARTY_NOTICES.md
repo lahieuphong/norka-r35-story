@@ -39,7 +39,7 @@ This project distributes optimized and modified derivatives of the credited Crea
 - preservation and preparation of the driver-door and steering-wheel pivots for interactive runtime behavior; and
 - integration into a responsive, non-commercial WebGL presentation.
 
-The affected files include the generated variants in `public/models/` and model-derived or supplied material textures in `public/textures/`. Those model-related assets and adaptations remain available under **CC BY-NC-SA 4.0**. The license requires attribution, non-commercial use, indication of modifications, and ShareAlike treatment for shared adaptations. The official license text controls if this summary differs from it.
+The affected files include the generated variants in `public/models/` and model-derived or supplied authoring textures in `source-assets/textures/`. Those model-related assets and adaptations remain available under **CC BY-NC-SA 4.0**. The license requires attribution, non-commercial use, indication of modifications, and ShareAlike treatment for shared adaptations. The official license text controls if this summary differs from it.
 
 The Creative Commons license applies to the credited model and model-related adaptations. It does not automatically relicense independently authored application source code.
 
@@ -56,10 +56,10 @@ They do not contain a downloaded photographic HDRI.
 
 The checked-in source copies below originate from the Basis Universal distribution bundled with Three.js:
 
-- `public/basis/basis_transcoder.js`
-- `public/basis/basis_transcoder.wasm`
+- `source-assets/basis/basis_transcoder.js`
+- `source-assets/basis/basis_transcoder.wasm`
 
-Basis Universal is Copyright © 2016–2026 Binomial LLC and is provided under the Apache License 2.0. The deployed copies include the complete [Apache License 2.0 text](../public/basis/LICENSE) and the upstream [Basis Universal NOTICE](../public/basis/NOTICE). These checked-in copies are not used by the current runtime loader, which bundles the matching transcoder through Three.js, but their upstream license and notice remain applicable.
+Basis Universal is Copyright © 2016–2026 Binomial LLC and is provided under the Apache License 2.0. The checked-in source copies include the complete [Apache License 2.0 text](../source-assets/basis/LICENSE) and the upstream [Basis Universal NOTICE](../source-assets/basis/NOTICE). The runtime bundles the matching transcoder through Three.js instead of serving those source copies directly; production also retains deployed copies at [public/basis/LICENSE](../public/basis/LICENSE) and [public/basis/NOTICE](../public/basis/NOTICE).
 
 ## Direct Software Dependency License Summary
 

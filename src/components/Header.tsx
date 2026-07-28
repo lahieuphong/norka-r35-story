@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { subscribeStoryProgress } from '../three/storyProgress';
+import { STORY_SECTION_COUNT, subscribeStoryProgress } from '../three/storyProgress';
 
 interface Props {
   readonly exploreActive: boolean;
@@ -7,7 +7,10 @@ interface Props {
 }
 interface IndicatorState { readonly current: number; readonly total: number; }
 
-const WHEEL_TICKS = Array.from({ length: 12 }, (_, index) => index * 30);
+const WHEEL_TICKS = Array.from(
+  { length: STORY_SECTION_COUNT },
+  (_, index) => index * (360 / STORY_SECTION_COUNT),
+);
 const formatIndex = (value: number): string => value.toString().padStart(2, '0');
 const NAV_ITEMS = [
   { label: 'Explore', href: '#explore', first: 1, last: 1 },
@@ -19,7 +22,7 @@ const NAV_ITEMS = [
 export function Header({ exploreActive, interactionBlocked }: Props) {
   const indicatorRef = useRef<HTMLDivElement>(null);
   const wordmarkTextRef = useRef<HTMLSpanElement>(null);
-  const indicatorStateRef = useRef<IndicatorState>({ current: 1, total: 12 });
+  const indicatorStateRef = useRef<IndicatorState>({ current: 1, total: STORY_SECTION_COUNT });
   const [indicator, setIndicator] = useState<IndicatorState>(indicatorStateRef.current);
   const [hideWordmarkText, setHideWordmarkText] = useState(false);
 

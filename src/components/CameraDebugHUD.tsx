@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cameraDebugSnapshot } from '../three/storyState';
 interface Values { readonly position: readonly [number, number, number]; readonly target: readonly [number, number, number]; readonly fov: number; readonly progress: number; readonly section: string; }
 function read(): Values { return { position: cameraDebugSnapshot.position.toArray(), target: cameraDebugSnapshot.target.toArray(), fov: cameraDebugSnapshot.fov, progress: cameraDebugSnapshot.progress, section: cameraDebugSnapshot.section }; }
@@ -11,6 +11,7 @@ export default function CameraDebugHUD() {
   const [visible, setVisible] = useState(false);
   const [values, setValues] = useState<Values>(read);
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
   useEffect(() => {
     const key = (event: KeyboardEvent): void => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
@@ -24,9 +25,24 @@ export default function CameraDebugHUD() {
     const update = (time: number): void => { if (time - previous > 80) { previous = time; setValues(read()); } frame = requestAnimationFrame(update); };
     frame = requestAnimationFrame(update); return () => cancelAnimationFrame(frame);
   }, [visible]);
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+  }, []);
   if (!visible) return null;
   const snippet = `${JSON.stringify(values.section)}: {\n  position: [${values.position.map(fmt).join(', ')}],\n  target: [${values.target.map(fmt).join(', ')}],\n  fov: ${values.fov.toFixed(2)},\n},`;
-  const copy = async (): Promise<void> => { await copyText(snippet); setCopied(true); window.setTimeout(() => setCopied(false), 1200); };
+  const copy = async (): Promise<void> => {
+    try {
+      await copyText(snippet);
+    } catch {
+      return;
+    }
+    setCopied(true);
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = window.setTimeout(() => {
+      copiedTimerRef.current = null;
+      setCopied(false);
+    }, 1200);
+  };
   return (
     <aside className="camera-debug" aria-label="Development camera inspector">
       <div className="camera-debug__heading"><strong>CAMERA HUD</strong><span>D to toggle</span></div>

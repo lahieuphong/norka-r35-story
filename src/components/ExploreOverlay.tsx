@@ -19,9 +19,9 @@ interface Props {
 function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase, drivePhase: DrivePhase): string {
   if (phase === 'entering') return 'Preparing interactive camera';
   if (phase === 'exiting') return 'Returning to the story';
-  if (viewPhase === 'exterior' && drivePhase === 'starting') return 'Engaging Auto Drive';
+  if (viewPhase === 'exterior' && drivePhase === 'starting') return 'Turning on full vehicle lights, then starting Auto Drive';
   if (viewPhase === 'exterior' && drivePhase === 'driving') return 'Auto Drive active · stop driving or exit the 3D experience';
-  if (viewPhase === 'exterior' && drivePhase === 'stopping') return 'Slowing down · Exit 3D remains available';
+  if (viewPhase === 'exterior' && drivePhase === 'stopping') return 'Stopping Auto Drive · Exit 3D remains available';
   if (viewPhase === 'openingExteriorDoor') return 'Opening driver door';
   if (viewPhase === 'exteriorDoorOpen') return 'Door open · enter the car or close the door';
   if (viewPhase === 'exteriorDoorOpenAfterExit') return 'Outside the car · close the driver door when ready';
@@ -166,9 +166,9 @@ export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDr
     || viewPhase === 'openingDoorForExit'
     || viewPhase === 'exitingInterior';
   const driveTransitioning = driveStarting || driveStopping;
-  const driveHudLabel = driveStarting ? 'Engaging'
+  const driveHudLabel = driveStarting ? 'Lights · Launch'
     : driveReady ? 'Auto Drive'
-      : 'Slowing down';
+      : 'Powering down';
   const actionLabel = exteriorDoorOpenAfterExitReady ? 'Close door'
     : viewPhase === 'openingExteriorDoor' ? 'Opening door'
       : viewPhase === 'enteringInterior' ? 'Entering cockpit'
