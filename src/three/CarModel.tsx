@@ -231,6 +231,11 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
   // prevents its shared CDN Draco loader/default Meshopt decoder overwriting it.
   const gltf = useGLTF(modelUrl, false, false, extendLoader);
   const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+  // Texture sampling is deliberately fixed for this mounted model. Responsive
+  // changes must not invalidate the prepared scene, clone its materials/textures,
+  // and schedule the previous owned resources for disposal. A Canvas/model
+  // remount will apply the newly measured sampling level.
+  const textureAnisotropy = useRef(Math.min(anisotropy, maxAnisotropy));
   const reportedSelection = useRef<string | null>(null);
   const renderedGlassOpacity = useRef(Number.NaN);
   const prepared = useMemo(() => {
@@ -245,7 +250,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
     applyMaterialAdjustments(
       scene,
       referenceMaps,
-      Math.min(anisotropy, maxAnisotropy),
+      textureAnisotropy.current,
       modelTier !== 'desktop',
     );
     let nodeCount = 0;
@@ -283,7 +288,7 @@ export function CarModel({ anisotropy, interactionRig, modelTier, phase, viewPha
       ownedMaterials: [...materials],
       ownedTextures: [...textures],
     };
-  }, [anisotropy, gltf.parser.json, gltf.scene, maxAnisotropy, modelTier]);
+  }, [gltf.parser.json, gltf.scene, modelTier]);
   const steeringInteractive = isInteriorOrbitEnabled(phase, viewPhase);
   const steeringDrag = useRef<SteeringDragState | null>(null);
   const steeringRaycaster = useRef(new THREE.Raycaster());

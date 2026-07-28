@@ -245,9 +245,14 @@
 .door-hotspot-wrap[data-label-side="left"] .door-hotspot__label { right: calc(100% + .32rem); left: auto; }
 .door-hotspot:is(:hover,:focus-visible) .door-hotspot__ring { background: rgba(6,117,185,.9); box-shadow: 0 0 0 .4rem rgba(255,255,255,.28),0 0 0 .52rem rgba(6,102,166,.48); }
 @keyframes door-hotspot-pulse { 0% { opacity: .72; transform: scale(.82); } 70%,100% { opacity: 0; transform: scale(1.38); } }
-.webgl-fallback { position: fixed; z-index: 80; inset: 0; display: grid; place-content: center; padding: 2rem; background: var(--bg); color: var(--text); text-align: center; }
+.webgl-fallback { position: fixed; z-index: 80; inset: 0; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; padding: 2rem; overflow: auto; border: 0; background: var(--bg); color: var(--text); text-align: center; }
+.webgl-fallback[open] { display: grid; place-content: center; }
+.webgl-fallback::backdrop { background: var(--bg); }
+.webgl-fallback__content { display: grid; justify-items: center; }
 .webgl-fallback h2 { margin: .5rem 0 1rem; font-size: clamp(2rem,5vw,4rem); }
 .webgl-fallback p { max-width: 34rem; margin: 0 auto; color: var(--muted); line-height: 1.6; }
+.webgl-fallback__continue { min-height: 2.75rem; margin-top: 1.5rem; padding: .72rem 1.1rem; border: 1px solid var(--brand-blue); border-radius: 999px; background: var(--brand-blue); color: #fff; font-weight: 700; letter-spacing: .04em; cursor: pointer; }
+.webgl-fallback__continue:is(:hover,:focus-visible) { background: var(--brand-navy); }
 .camera-debug { position: fixed; z-index: 150; right: 1rem; bottom: 1rem; width: min(25rem,calc(100vw - 2rem)); padding: 1rem; border: 1px solid rgba(255,255,255,.22); background: rgba(5,6,8,.92); color: #fff; font: .72rem/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; backdrop-filter: blur(14px); }
 .camera-debug__heading { display: flex; justify-content: space-between; margin-bottom: .8rem; }
 .camera-debug__heading span { color: rgba(255,255,255,.5); }
@@ -412,3 +417,18 @@
   .story-cta { min-width: min(10rem,100%); min-height: clamp(1.1rem,18svh,1.375rem); gap: .5rem; margin-top: clamp(.15rem,2svh,.4rem); padding: .12rem 0; font-size: clamp(.45rem,6svh,.5625rem); }
   .story-cta__icon { width: 1.1rem; height: .8rem; }
 }
+
+/* Readable story fallback when the 3D renderer is unavailable. */
+.experience--webgl-failed .visual-vignette { display: none !important; }
+.experience--webgl-failed .story-root { background: #e8edf2; }
+.experience--webgl-failed .story-section,.experience--webgl-failed #rear-seat-detail { --story-copy-width: min(53rem,100%); min-height: 100svh; padding: clamp(6rem,12svh,9rem) max(var(--page-pad),env(safe-area-inset-right)) clamp(3rem,8svh,6rem) max(var(--page-pad),env(safe-area-inset-left)); pointer-events: auto; }
+.experience--webgl-failed :is(#explore,#performance,#aerodynamics,#rear-signature,#precision,#hero) { background: linear-gradient(135deg,#f2f6f9,#dfe8ef); }
+.experience--webgl-failed :is(#interior,#steering,#instruments,#front-seats,#rear-seats,#rear-seat-detail) { background: linear-gradient(135deg,#101820,#06090d); }
+.experience--webgl-failed .story-section__copy-slot { width: var(--story-copy-width) !important; max-width: 100%; align-self: auto !important; }
+.experience--webgl-failed .story-section__copy-viewport { position: static !important; z-index: auto; inset: auto !important; display: block !important; width: 100% !important; height: auto; padding: 0 !important; pointer-events: auto; }
+.experience--webgl-failed .story-section__copy { width: 100% !important; opacity: 1 !important; visibility: visible !important; transform: none !important; pointer-events: auto !important; }
+.experience--webgl-failed .story-section__copy::before { display: none !important; }
+.experience--webgl-failed .story-section__rail { display: none !important; }
+.experience--webgl-failed #explore .story-cta { display: none !important; }
+.experience--webgl-failed #hero { grid-template-rows: auto !important; align-items: center !important; gap: 0 !important; }
+.experience--webgl-failed #hero .attribution { position: static !important; inset: auto !important; align-self: auto !important; width: min(53rem,100%) !important; margin-top: clamp(2rem,5vw,4rem); opacity: 1 !important; visibility: visible !important; pointer-events: auto; }

@@ -8,9 +8,10 @@ import { StorySection } from '../components/StorySection';
 import { PORTAL_TRANSITION_TIMING, StoryReturnTransition, type StoryReturnPhase } from '../components/StoryReturnTransition';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { CarCanvas } from '../three/CarCanvas';
+import { STORY_SHOT_ORDER, type ShotName } from '../three/cameraShots';
 import { DEFAULT_MODEL_ATTRIBUTION, type ModelAttribution, type ModelReadyDetails } from '../three/CarModel';
 import type { ExplorePhase, ExploreViewPhase } from '../three/experienceTypes';
-import { subscribeStoryProgress } from '../three/storyProgress';
+import { publishStoryProgress, subscribeStoryProgress } from '../three/storyProgress';
 import { disableStoryScrollTriggers, enableStoryScrollTriggers } from '../three/storyState';
 
 const CameraDebugHUD = import.meta.env.DEV ? lazy(() => import('../components/CameraDebugHUD')) : null;
@@ -18,7 +19,41 @@ const FINAL_HINT_DWELL_MS = 240;
 const FINAL_HINT_RETRY_MS = 80;
 const FINAL_HINT_MAX_ATTEMPTS = 6;
 interface BodySnapshot { readonly position: string; readonly top: string; readonly left: string; readonly right: string; readonly width: string; readonly overflow: string; }
+interface LockedLocationSnapshot { readonly pathname: string; readonly search: string; readonly hash: string; }
 type StoryReturnState = 'idle' | StoryReturnPhase;
+type StoryHashTarget = HTMLElement | 'top' | null;
+
+function resolveStoryHashTarget(hash: string): StoryHashTarget {
+  if (hash === '' || hash === '#') return 'top';
+  let id: string;
+  try {
+    id = decodeURIComponent(hash.slice(1));
+  } catch {
+    return null;
+  }
+  const target = document.getElementById(id);
+  return target?.matches('[data-story-section]') && target.closest('[data-story-root]')
+    ? target
+    : null;
+}
+
+function resolveChangedStoryShot(locationSnapshot: LockedLocationSnapshot | null): ShotName | null {
+  const currentLocation = window.location;
+  if (
+    !locationSnapshot
+    || currentLocation.pathname !== locationSnapshot.pathname
+    || currentLocation.search !== locationSnapshot.search
+    || currentLocation.hash === locationSnapshot.hash
+  ) return null;
+
+  const hashTarget = resolveStoryHashTarget(currentLocation.hash);
+  if (hashTarget === 'top') return 'explore';
+  if (!hashTarget) return null;
+  const shot = hashTarget.dataset.storySection;
+  return shot && STORY_SHOT_ORDER.some((candidate) => candidate === shot)
+    ? shot as ShotName
+    : null;
+}
 
 function isCtaReadyForHint(button: HTMLButtonElement, icon: SVGSVGElement): boolean {
   const copy = button.closest<HTMLElement>('[data-story-copy]');
@@ -64,16 +99,20 @@ export function App() {
   const reducedMotion = useReducedMotion();
   const [modelReady, setModelReady] = useState(false);
   const [webglFailed, setWebglFailed] = useState(false);
+  const [introDismissed, setIntroDismissed] = useState(false);
   const [modelAttribution, setModelAttribution] = useState<ModelAttribution>(DEFAULT_MODEL_ATTRIBUTION);
   const [phase, setPhase] = useState<ExplorePhase>('story');
   const [viewPhase, setViewPhase] = useState<ExploreViewPhase>('exterior');
+  const [exitStoryShot, setExitStoryShot] = useState<ShotName | null>(null);
   const [activeCtaHint, setActiveCtaHint] = useState<CtaHintIntent | null>(null);
   const [storyReturnState, setStoryReturnState] = useState<StoryReturnState>('idle');
   const phaseRef = useRef<ExplorePhase>('story');
   const viewPhaseRef = useRef<ExploreViewPhase>('exterior');
   const storyReturnStateRef = useRef<StoryReturnState>('idle');
   const activeCtaHintRef = useRef<CtaHintIntent | null>(null);
+  const webglFailedRef = useRef(false);
   const lockedY = useRef(0);
+  const lockedLocation = useRef<LockedLocationSnapshot | null>(null);
   const exploreButtonRef = useRef<HTMLButtonElement>(null);
   const exploreIconRef = useRef<SVGSVGElement>(null);
   const returnButtonRef = useRef<HTMLButtonElement>(null);
@@ -81,6 +120,7 @@ export function App() {
   const bodySnapshot = useRef<BodySnapshot | null>(null);
   const resetAfterLoad = useRef(false);
   const resumeStoryAfterExit = useRef(false);
+  const recoverStoryAfterWebglFailure = useRef(false);
   const focusStoryStartAfterReturn = useRef(false);
   const initialRevealFinished = useRef(false);
   const finalHintPresented = useRef(false);
@@ -110,7 +150,8 @@ export function App() {
   useEffect(() => {
     if (!modelReady || resetAfterLoad.current) return;
     resetAfterLoad.current = true;
-    requestAnimationFrame(() => window.scrollTo(0, 0));
+    const resetFrame = requestAnimationFrame(() => window.scrollTo(0, 0));
+    return () => cancelAnimationFrame(resetFrame);
   }, [modelReady]);
   useEffect(() => {
     const queueFinalHint = (finalIndex: number, attempt = 0): void => {
@@ -235,40 +276,141 @@ export function App() {
     if (bodySnapshot.current) return;
     const body = document.body;
     lockedY.current = window.scrollY;
+    lockedLocation.current = {
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+    };
     bodySnapshot.current = { position: body.style.position, top: body.style.top, left: body.style.left, right: body.style.right, width: body.style.width, overflow: body.style.overflow };
     body.style.position = 'fixed'; body.style.top = `-${lockedY.current}px`; body.style.left = '0'; body.style.right = '0'; body.style.width = '100%'; body.style.overflow = 'hidden';
     document.documentElement.classList.add('is-explore-locked');
   }, []);
-  const unlockScroll = useCallback((): void => {
-    const snapshot = bodySnapshot.current; if (!snapshot) return;
+  const unlockScroll = useCallback((): boolean => {
+    const snapshot = bodySnapshot.current;
+    if (!snapshot) return false;
+    const locationSnapshot = lockedLocation.current;
+    const currentLocation = window.location;
+    const hashTarget = locationSnapshot
+      && currentLocation.pathname === locationSnapshot.pathname
+      && currentLocation.search === locationSnapshot.search
+      && currentLocation.hash !== locationSnapshot.hash
+      ? resolveStoryHashTarget(currentLocation.hash)
+      : null;
     const body = document.body;
     body.style.position = snapshot.position; body.style.top = snapshot.top; body.style.left = snapshot.left; body.style.right = snapshot.right; body.style.width = snapshot.width; body.style.overflow = snapshot.overflow;
     const root = document.documentElement;
     const previousScrollBehavior = root.style.scrollBehavior;
-    bodySnapshot.current = null; root.classList.remove('is-explore-locked'); root.style.scrollBehavior = 'auto'; window.scrollTo(0, lockedY.current); root.style.scrollBehavior = previousScrollBehavior;
+    bodySnapshot.current = null;
+    lockedLocation.current = null;
+    root.classList.remove('is-explore-locked');
+    root.style.scrollBehavior = 'auto';
+    if (hashTarget === 'top') {
+      window.scrollTo(0, 0);
+    } else if (hashTarget) {
+      hashTarget.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+    } else {
+      window.scrollTo(0, lockedY.current);
+    }
+    root.style.scrollBehavior = previousScrollBehavior;
+    return hashTarget !== null;
   }, []);
   useLayoutEffect(() => {
     if (phase !== 'story' || !resumeStoryAfterExit.current) return;
     resumeStoryAfterExit.current = false;
-    unlockScroll();
+    const restoredFromCurrentHash = unlockScroll();
+    // Seek the scroll-owned camera and copy timelines during the same layout
+    // pass, before the restored story can paint at an outdated Explore pose.
+    enableStoryScrollTriggers();
     let focusFrame = 0;
     const resumeFrame = requestAnimationFrame(() => {
+      // Refresh once more after the browser has settled the restored scrollbar
+      // geometry, preserving the responsive measurements used by each shot.
       enableStoryScrollTriggers();
-      focusFrame = requestAnimationFrame(() => exploreButtonRef.current?.focus());
+      if (!restoredFromCurrentHash) {
+        focusFrame = requestAnimationFrame(() => exploreButtonRef.current?.focus({ preventScroll: true }));
+      }
     });
     return () => {
       cancelAnimationFrame(resumeFrame);
       cancelAnimationFrame(focusFrame);
     };
   }, [phase, unlockScroll]);
-  useEffect(() => () => unlockScroll(), [unlockScroll]);
+  useEffect(() => () => {
+    unlockScroll();
+    enableStoryScrollTriggers();
+  }, [unlockScroll]);
 
   const onModelReady = useCallback((details: ModelReadyDetails): void => { setModelAttribution(details.attribution); setModelReady(true); }, []);
   const onWebGLFailure = useCallback((): void => {
+    if (webglFailedRef.current) return;
+    webglFailedRef.current = true;
     cancelPendingFinalHint();
     updateCtaHint(null);
+    resumeStoryAfterExit.current = false;
+    recoverStoryAfterWebglFailure.current = true;
+    focusStoryStartAfterReturn.current = false;
+    phaseRef.current = 'story';
+    viewPhaseRef.current = 'exterior';
+    storyReturnStateRef.current = 'idle';
+    setPhase('story');
+    setViewPhase('exterior');
+    setExitStoryShot(null);
+    setStoryReturnState('idle');
+    // A WebGL failure also ends the intro cover. The fallback owns
+    // focus while visible; once dismissed, the non-3D story remains usable.
+    setIntroDismissed(true);
     setWebglFailed(true);
   }, [cancelPendingFinalHint, updateCtaHint]);
+  useLayoutEffect(() => {
+    if (!webglFailed || !recoverStoryAfterWebglFailure.current) return;
+    recoverStoryAfterWebglFailure.current = false;
+    unlockScroll();
+    enableStoryScrollTriggers();
+  }, [unlockScroll, webglFailed]);
+  useEffect(() => {
+    if (!webglFailed) return;
+    const root = document.querySelector<HTMLElement>('[data-story-root]');
+    const sections = root
+      ? Array.from(root.querySelectorAll<HTMLElement>('[data-story-section]'))
+      : [];
+    if (!root || sections.length === 0) return;
+
+    let frame = 0;
+    const updateProgress = (): void => {
+      frame = 0;
+      const viewportCenter = window.innerHeight * 0.5;
+      let currentIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      sections.forEach((section, index) => {
+        const rect = section.getBoundingClientRect();
+        const distance = Math.max(0, rect.top - viewportCenter, viewportCenter - rect.bottom);
+        if (distance >= nearestDistance) return;
+        nearestDistance = distance;
+        currentIndex = index;
+      });
+
+      const rootTop = window.scrollY + root.getBoundingClientRect().top;
+      const scrollRange = Math.max(1, root.scrollHeight - window.innerHeight);
+      publishStoryProgress(
+        (window.scrollY - rootTop) / scrollRange,
+        currentIndex + 1,
+        sections.length,
+      );
+    };
+    const queueUpdate = (): void => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(updateProgress);
+    };
+
+    queueUpdate();
+    window.addEventListener('scroll', queueUpdate, { passive: true });
+    window.addEventListener('resize', queueUpdate, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', queueUpdate);
+      window.removeEventListener('resize', queueUpdate);
+    };
+  }, [webglFailed]);
   const dismissCtaHint = useCallback((): void => updateCtaHint(null), [updateCtaHint]);
   const handleCtaHintPresented = useCallback((): void => {
     if (activeCtaHintRef.current === 'return') finalHintPresented.current = true;
@@ -284,17 +426,28 @@ export function App() {
     updateCtaHint('explore');
   }, [updateCtaHint, webglFailed]);
   const finishInitialReveal = useCallback((): void => {
-    requestAnimationFrame(() => {
-      if (phaseRef.current !== 'story' || storyReturnStateRef.current !== 'idle') return;
-      enableStoryScrollTriggers();
-      initialRevealFinished.current = true;
-      revealExploreHint();
-    });
-  }, [revealExploreHint]);
+    if (webglFailedRef.current) return;
+    setIntroDismissed(true);
+  }, []);
+  useLayoutEffect(() => {
+    if (!introDismissed || webglFailed) return;
+    if (phaseRef.current !== 'story' || storyReturnStateRef.current !== 'idle') return;
+    initialRevealFinished.current = true;
+    enableStoryScrollTriggers();
+    const hintFrame = requestAnimationFrame(revealExploreHint);
+    return () => cancelAnimationFrame(hintFrame);
+  }, [introDismissed, revealExploreHint, webglFailed]);
   const enterExplore = useCallback((): void => {
-    if (!modelReady || phaseRef.current !== 'story' || storyReturnStateRef.current !== 'idle') return;
+    if (
+      !modelReady
+      || !initialRevealFinished.current
+      || webglFailedRef.current
+      || phaseRef.current !== 'story'
+      || storyReturnStateRef.current !== 'idle'
+    ) return;
     cancelPendingFinalHint();
     updateCtaHint(null);
+    setExitStoryShot(null);
     phaseRef.current = 'entering';
     disableStoryScrollTriggers(); lockScroll(); setPhase('entering');
   }, [cancelPendingFinalHint, lockScroll, modelReady, updateCtaHint]);
@@ -313,6 +466,7 @@ export function App() {
   }, []);
   const exitExplore = useCallback((): void => {
     if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+    setExitStoryShot(resolveChangedStoryShot(lockedLocation.current));
     phaseRef.current = 'exiting';
     setPhase('exiting');
   }, []);
@@ -393,17 +547,20 @@ export function App() {
     resumeStoryAfterExit.current = true;
     phaseRef.current = 'story';
     viewPhaseRef.current = 'exterior';
+    setExitStoryShot(null);
     setViewPhase('exterior');
     setPhase('story');
   }, []);
   const exploreActive = phase !== 'story';
   const storyReturnActive = storyReturnState !== 'idle';
+  const backgroundInteractionBlocked = !introDismissed || exploreActive || storyReturnActive;
 
   return (
-    <div className={`experience${exploreActive ? ' experience--explore' : ''}${storyReturnActive ? ` experience--story-return experience--story-return-${storyReturnState}` : ''}`} aria-busy={storyReturnActive || undefined}>
-      <a className="skip-link" href="#explore" tabIndex={exploreActive || storyReturnActive ? -1 : undefined}>Skip to the story</a>
+    <div className={'experience' + (webglFailed ? ' experience--webgl-failed' : '') + (exploreActive ? ' experience--explore' : '') + (storyReturnActive ? ' experience--story-return experience--story-return-' + storyReturnState : '')} aria-busy={(!introDismissed || storyReturnActive) || undefined}>
+      <a className="skip-link" href="#explore" inert={backgroundInteractionBlocked} tabIndex={backgroundInteractionBlocked ? -1 : undefined}>Skip to the story</a>
       <CarCanvas
         modelReady={modelReady}
+        exitStoryShot={exitStoryShot}
         phase={phase}
         viewPhase={viewPhase}
         reducedMotion={reducedMotion}
@@ -421,9 +578,9 @@ export function App() {
         onExteriorDoorCloseComplete={exteriorDoorCloseComplete}
       />
       <div className="visual-vignette" aria-hidden="true" />
-      <Header exploreActive={exploreActive} />
-      <main className="story-root" data-story-root inert={exploreActive || storyReturnActive} aria-busy={storyReturnActive || undefined}>
-        <StorySection id="explore" index="01" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || phase !== 'story'} ctaButtonRef={exploreButtonRef} ctaIconRef={exploreIconRef} />
+      <Header exploreActive={exploreActive} interactionBlocked={backgroundInteractionBlocked} />
+      <main className="story-root" data-story-root inert={backgroundInteractionBlocked} aria-busy={(!introDismissed || storyReturnActive) || undefined}>
+        <StorySection id="explore" index="01" eyebrow="Interactive" heading="3D Experience" body="Inspect the vehicle from every angle." ctaLabel="Explore the car" onCta={enterExplore} ctaDisabled={!modelReady || webglFailed || !introDismissed || phase !== 'story'} ctaButtonRef={exploreButtonRef} ctaIconRef={exploreIconRef} />
         <StorySection id="performance" index="02" eyebrow="Performance in every line" heading="Performance" body="A wide stance, aggressive cooling and track-inspired engineering give the machine its unmistakable purpose." />
         <StorySection id="aerodynamics" index="03" eyebrow="Sculpted by airflow" heading="Aerodynamics" body="Every surface, vent and carbon detail is shaped to manage airflow and create a planted, purposeful silhouette." align="right" />
         <StorySection id="rear-signature" index="04" eyebrow="Designed to leave a mark" heading="Rear Signature" body="Four circular tail lamps, a towering rear wing and a sculpted diffuser create an unmistakable departing view." align="right" />

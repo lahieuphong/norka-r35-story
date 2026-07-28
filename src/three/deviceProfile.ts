@@ -29,8 +29,11 @@ function readHardwareHints(): { readonly touch: boolean; readonly lowEnd: boolea
 }
 
 function selectModelTier(isMobile: boolean, lowEnd: boolean): ModelTier {
-  if (!isMobile) return 'desktop';
-  return lowEnd ? 'mobile-low' : 'mobile';
+  // Hardware constraints outrank viewport shape. A low-memory/low-core laptop
+  // can have a wide desktop viewport while still being a poor fit for the
+  // heavyweight desktop GLB.
+  if (lowEnd) return 'mobile-low';
+  return isMobile ? 'mobile' : 'desktop';
 }
 
 export function readDeviceProfile(): DeviceProfile {

@@ -1,7 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { subscribeStoryProgress } from '../three/storyProgress';
 
-interface Props { readonly exploreActive: boolean; }
+interface Props {
+  readonly exploreActive: boolean;
+  readonly interactionBlocked: boolean;
+}
 interface IndicatorState { readonly current: number; readonly total: number; }
 
 const WHEEL_TICKS = Array.from({ length: 12 }, (_, index) => index * 30);
@@ -13,7 +16,7 @@ const NAV_ITEMS = [
   { label: 'Overview', href: '#hero', first: 12, last: 12 },
 ] as const;
 
-export function Header({ exploreActive }: Props) {
+export function Header({ exploreActive, interactionBlocked }: Props) {
   const indicatorRef = useRef<HTMLDivElement>(null);
   const wordmarkTextRef = useRef<HTMLSpanElement>(null);
   const indicatorStateRef = useRef<IndicatorState>({ current: 1, total: 12 });
@@ -88,7 +91,7 @@ export function Header({ exploreActive }: Props) {
   }, [exploreActive]);
 
   return (
-    <header className={`site-header${exploreActive ? ' is-muted' : ''}`} inert={exploreActive}>
+    <header className={`site-header${exploreActive ? ' is-muted' : ''}`} inert={interactionBlocked}>
       <a className='wordmark' href='#explore' aria-label='NORKA R35 — back to the beginning'>
         <img className='wordmark__logo' src='/brand/norka-compass-logo-512.png' width='44' height='44' alt='' aria-hidden='true' />
         <span

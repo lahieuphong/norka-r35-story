@@ -9,7 +9,7 @@ import { CarModel, releaseModelDecoders, type ModelReadyDetails } from './CarMod
 import { readDeviceProfile, type DeviceProfile } from './deviceProfile';
 import { isExteriorOrbitEnabled, isInteriorOrbitEnabled, isStableExploreView, type ExplorePhase, type ExploreViewPhase } from './experienceTypes';
 import { Lighting } from './Lighting';
-import { getShotSet, INITIAL_STORY_SHOT, type VectorTuple } from './cameraShots';
+import { getShotSet, INITIAL_STORY_SHOT, type ShotName, type VectorTuple } from './cameraShots';
 import { getInteriorTransitionSet } from './interiorTransitionShots';
 import { createVehicleInteractionRig } from './VehicleInteractionRig';
 
@@ -17,6 +17,7 @@ interface Props {
   readonly modelReady: boolean;
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
+  readonly exitStoryShot?: ShotName | null;
   readonly reducedMotion: boolean;
   readonly onModelReady: (details: ModelReadyDetails) => void;
   readonly onWebGLFailure: () => void;
@@ -585,9 +586,38 @@ function SmoothZoomControls({ controlsRef, enabled, mobile, minDistance, maxDist
   return null;
 }
 function WebGLFallback({ onFailure }: { readonly onFailure: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [dismissed, setDismissed] = useState(false);
   useEffect(() => onFailure(), [onFailure]);
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || dismissed) return;
+    if (!dialog.open) dialog.showModal();
+    return () => { if (dialog.open) dialog.close(); };
+  }, [dismissed]);
+  const dismiss = (): void => {
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+    setDismissed(true);
+  };
+  if (dismissed) return null;
   return createPortal(
-    <div className="webgl-fallback" role="alert"><p className="eyebrow">3D unavailable</p><h2>WebGL could not start.</h2><p>Enable hardware acceleration or open this page in a modern browser to view the vehicle.</p></div>,
+    <dialog
+      ref={dialogRef}
+      className="webgl-fallback"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="webgl-fallback-title"
+      aria-describedby="webgl-fallback-description"
+      onCancel={(event) => { event.preventDefault(); dismiss(); }}
+    >
+      <div className="webgl-fallback__content">
+        <p className="eyebrow">3D unavailable</p>
+        <h2 id="webgl-fallback-title">WebGL could not start.</h2>
+        <p id="webgl-fallback-description">The interactive vehicle is unavailable, but the complete story is still ready to read.</p>
+        <button className="webgl-fallback__continue" type="button" onClick={dismiss} autoFocus>Continue with the story</button>
+      </div>
+    </dialog>,
     document.body,
   );
 }
@@ -615,7 +645,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
   public override render(): ReactNode { return this.state.failed ? <WebGLFallback onFailure={this.props.onFailure} /> : this.props.children; }
 }
 
-function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
+function WebGLCarCanvas({ modelReady, phase, viewPhase, exitStoryShot = null, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
   const profile = useProfile();
   const [gpuConstrained, setGpuConstrained] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -729,6 +759,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, reducedMotion, onModelRe
             modelReady={modelReady}
             phase={phase}
             viewPhase={viewPhase}
+            exitStoryShot={exitStoryShot}
             interactionRig={interactionRig}
             reducedMotion={reducedMotion}
             onEnterComplete={onEnterComplete}
