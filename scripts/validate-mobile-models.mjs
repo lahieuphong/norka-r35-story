@@ -278,6 +278,11 @@ for (const [variant, file] of Object.entries(files).slice(1)) {
   assertBoundsClose(metrics.bounds, original.bounds, variant);
 }
 
+for (const variant of ['desktop', 'fallback']) {
+  const metrics = await readMetrics(runtimeFiles[variant]);
+  assertProtectedLightSubtrees(metrics, original, variant);
+}
+
 assertTextureCaps(results.mobile, 2048, 1024, 'mobile');
 assertTextureCaps(results['mobile-low'], 1024, 512, 'mobile-low');
 assertTextureCaps(results['mobile-fallback'], 512, 256, 'mobile-fallback');
