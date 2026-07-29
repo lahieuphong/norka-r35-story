@@ -105,6 +105,7 @@ export function App() {
   const [phase, setPhase] = useState<ExplorePhase>('story');
   const [viewPhase, setViewPhase] = useState<ExploreViewPhase>('exterior');
   const [drivePhase, setDrivePhase] = useState<DrivePhase>('idle');
+  const [manualLightsOn, setManualLightsOn] = useState(false);
   const [exitStoryShot, setExitStoryShot] = useState<ShotName | null>(null);
   const [activeCtaHint, setActiveCtaHint] = useState<CtaHintIntent | null>(null);
   const [storyReturnState, setStoryReturnState] = useState<StoryReturnState>('idle');
@@ -361,6 +362,7 @@ export function App() {
     setPhase('story');
     setViewPhase('exterior');
     setDrivePhase('idle');
+    setManualLightsOn(false);
     setExitStoryShot(null);
     setStoryReturnState('idle');
     // A WebGL failure also ends the intro cover. The fallback owns
@@ -458,6 +460,7 @@ export function App() {
     drivePhaseRef.current = 'idle';
     pendingDriveExit.current = null;
     setDrivePhase('idle');
+    setManualLightsOn(false);
     phaseRef.current = 'entering';
     disableStoryScrollTriggers(); lockScroll(); setPhase('entering');
   }, [cancelPendingFinalHint, lockScroll, modelReady, updateCtaHint]);
@@ -504,6 +507,14 @@ export function App() {
     drivePhaseRef.current = 'stopping';
     setDrivePhase('stopping');
   }, []);
+  const toggleManualLights = useCallback((): void => {
+    if (
+      phaseRef.current !== 'explore'
+      || viewPhaseRef.current !== 'exterior'
+      || drivePhaseRef.current !== 'idle'
+    ) return;
+    setManualLightsOn((current) => !current);
+  }, []);
   const driveStartComplete = useCallback((): void => {
     if (
       phaseRef.current !== 'explore'
@@ -523,6 +534,7 @@ export function App() {
   }, [beginExploreExit]);
   const exitExplore = useCallback((): void => {
     if (phaseRef.current !== 'explore' || viewPhaseRef.current !== 'exterior') return;
+    setManualLightsOn(false);
     if (drivePhaseRef.current === 'idle') {
       beginExploreExit();
       return;
@@ -620,6 +632,7 @@ export function App() {
     setExitStoryShot(null);
     setViewPhase('exterior');
     setDrivePhase('idle');
+    setManualLightsOn(false);
     setPhase('story');
   }, []);
   const exploreActive = phase !== 'story';
@@ -640,6 +653,7 @@ export function App() {
         phase={phase}
         viewPhase={viewPhase}
         drivePhase={drivePhase}
+        manualLightsOn={manualLightsOn}
         reducedMotion={reducedMotion}
         onModelReady={onModelReady}
         onWebGLFailure={onWebGLFailure}
@@ -685,7 +699,9 @@ export function App() {
         phase={phase}
         viewPhase={viewPhase}
         drivePhase={drivePhase}
+        manualLightsOn={manualLightsOn}
         onExit={exitExplore}
+        onToggleLights={toggleManualLights}
         onStartDrive={startDrive}
         onStopDrive={stopDrive}
         onEnterInterior={enterInterior}

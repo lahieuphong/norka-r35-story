@@ -16,7 +16,7 @@ import { storyVisualState } from './storyState';
 import type { ModelTier } from './deviceProfile';
 import type { VehicleInteractionRig } from './VehicleInteractionRig';
 import { VehicleLightEffects } from './VehicleLightEffects';
-import { createVehicleLightAssembly } from './vehicleLightAssembly';
+import { createVehicleLightAssembly, resolveVehicleLightBlend } from './vehicleLightAssembly';
 import { createSteeringWheelAssembly, STEERING_WHEEL_LOCAL_AXIS } from './steeringWheel';
 
 const URLS = {
@@ -65,6 +65,7 @@ interface Props {
   readonly anisotropy: number;
   readonly driveActive: boolean;
   readonly interactionRig: VehicleInteractionRig;
+  readonly manualLightsOn: boolean;
   readonly modelTier: ModelTier;
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
@@ -236,7 +237,7 @@ function isolateSceneMaterials(root: THREE.Object3D): void {
   });
 }
 
-export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, phase, viewPhase, onOpenExteriorDoor, onReady }: Props) {
+export function CarModel({ anisotropy, driveActive, interactionRig, manualLightsOn, modelTier, phase, viewPhase, onOpenExteriorDoor, onReady }: Props) {
   const renderer = useThree((state) => state.gl);
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
@@ -477,6 +478,7 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
       });
     };
   }, [prepared.wheels]);
+  useEffect(() => invalidate(), [invalidate, manualLightsOn]);
   useFrame(() => {
     if (prepared.driverDoor) {
       prepared.driverDoor.pivot.rotation.y = DRIVER_DOOR_OPEN_ANGLE * THREE.MathUtils.clamp(interactionRig.doorProgress, 0, 1);
@@ -505,7 +507,7 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
         material.opacity = baseOpacity * opacity;
       });
     }
-    prepared.vehicleLights?.render(interactionRig.driveLightBlend);
+    prepared.vehicleLights?.render(resolveVehicleLightBlend(interactionRig.driveLightBlend, manualLightsOn));
   });
   useLayoutEffect(() => {
     const selection = modelVariant + ':' + modelTier;
@@ -518,7 +520,7 @@ export function CarModel({ anisotropy, driveActive, interactionRig, modelTier, p
       <primitive object={prepared.scene} dispose={null} />
       {prepared.vehicleLights ? <primitive object={prepared.vehicleLights.spotRig} dispose={null} /> : null}
       {prepared.vehicleLights
-        ? <VehicleLightEffects interactionRig={interactionRig} mobileOptimized={modelTier !== 'desktop'} />
+        ? <VehicleLightEffects headlightAnchors={prepared.vehicleLights.headlightAnchors} interactionRig={interactionRig} manualLightsOn={manualLightsOn} mobileOptimized={modelTier !== 'desktop'} />
         : null}
       <DoorHotspot
         available={Boolean(prepared.driverDoor) && !driveActive}

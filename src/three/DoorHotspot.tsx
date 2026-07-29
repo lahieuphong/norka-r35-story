@@ -18,7 +18,13 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
   const buttonRef = useRef<HTMLButtonElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
   const visibleRef = useRef<boolean | null>(null);
-  const labelLayout = useRef({ viewportWidth: 0, rightExtent: 120 });
+  const labelLayout = useRef({
+    viewportWidth: 0,
+    viewportHeight: 0,
+    rightExtent: 120,
+    driveDockLeft: Number.POSITIVE_INFINITY,
+    driveDockTop: Number.POSITIVE_INFINITY,
+  });
   const worldPosition = useMemo(() => new THREE.Vector3(), []);
   const projectedPosition = useMemo(() => new THREE.Vector3(), []);
   const interactive = available && phase === 'explore' && viewPhase === 'exterior';
@@ -26,14 +32,21 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
   const updateLabelSide = useCallback(() => {
     const content = contentRef.current;
     const button = buttonRef.current;
-    if (!content || !button || content.dataset.visible !== 'true') return;
+    if (!content || !button) return;
     const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const driveDock = document.querySelector<HTMLElement>('[data-drive-dock]');
+    const driveDockRect = driveDock?.getBoundingClientRect();
     const buttonRect = button.getBoundingClientRect();
     const buttonCenter = buttonRect.left + buttonRect.width * 0.5;
     const buttonWidth = button.offsetWidth;
     const labelWidth = labelRef.current?.offsetWidth ?? 112;
     labelLayout.current.viewportWidth = viewportWidth;
+    labelLayout.current.viewportHeight = viewportHeight;
     labelLayout.current.rightExtent = buttonWidth * 0.5 + labelWidth + 8;
+    labelLayout.current.driveDockLeft = driveDockRect?.left ?? Number.POSITIVE_INFINITY;
+    labelLayout.current.driveDockTop = driveDockRect?.top ?? Number.POSITIVE_INFINITY;
+    if (content.dataset.visible !== 'true') return;
     content.dataset.labelSide = buttonCenter + labelLayout.current.rightExtent > viewportWidth ? 'left' : 'right';
   }, []);
 
@@ -44,6 +57,8 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
     observer.observe(document.documentElement);
     if (buttonRef.current) observer.observe(buttonRef.current);
     if (labelRef.current) observer.observe(labelRef.current);
+    const driveDock = document.querySelector<HTMLElement>('[data-drive-dock]');
+    if (driveDock) observer.observe(driveDock);
     window.addEventListener('resize', updateLabelSide);
     viewport?.addEventListener('resize', updateLabelSide);
     const frame = requestAnimationFrame(updateLabelSide);
@@ -78,11 +93,15 @@ export function DoorHotspot({ available, phase, viewPhase, onActivate }: Props) 
     const facingDriverSide = camera.position.x > worldPosition.x + 0.12;
     const onScreen = projectedPosition.z > -1 && projectedPosition.z < 1
       && Math.abs(projectedPosition.x) < 0.96 && Math.abs(projectedPosition.y) < 0.94;
-    const visible = facingDriverSide && onScreen;
     const layout = labelLayout.current;
+    const centerX = (projectedPosition.x * 0.5 + 0.5) * layout.viewportWidth;
+    const centerY = (-projectedPosition.y * 0.5 + 0.5) * layout.viewportHeight;
+    const dockClearance = button.offsetWidth * 0.5 + 16;
+    const overlapsDriveDock = centerX > layout.driveDockLeft - dockClearance
+      && centerY > layout.driveDockTop - dockClearance;
+    const visible = facingDriverSide && onScreen && !overlapsDriveDock;
     if (visible && layout.viewportWidth > 0) {
       const currentSide = content.dataset.labelSide;
-      const centerX = (projectedPosition.x * 0.5 + 0.5) * layout.viewportWidth;
       const rightEdge = centerX + layout.rightExtent;
       if (rightEdge > layout.viewportWidth - 8 && currentSide !== 'left') content.dataset.labelSide = 'left';
       else if (rightEdge < layout.viewportWidth - 24 && currentSide === 'left') content.dataset.labelSide = 'right';

@@ -6,7 +6,9 @@ interface Props {
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
   readonly drivePhase: DrivePhase;
+  readonly manualLightsOn: boolean;
   readonly onExit: () => void;
+  readonly onToggleLights: () => void;
   readonly onStartDrive: () => void;
   readonly onStopDrive: () => void;
   readonly onEnterInterior: () => void;
@@ -16,7 +18,7 @@ interface Props {
   readonly onCloseExteriorDoor: () => void;
 }
 
-function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase, drivePhase: DrivePhase): string {
+function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase, drivePhase: DrivePhase, manualLightsOn: boolean): string {
   if (phase === 'entering') return 'Preparing interactive camera';
   if (phase === 'exiting') return 'Returning to the story';
   if (viewPhase === 'exterior' && drivePhase === 'starting') return 'Turning on full vehicle lights, then starting Auto Drive';
@@ -35,12 +37,13 @@ function readStatus(phase: ExplorePhase, viewPhase: ExploreViewPhase, drivePhase
   if (viewPhase === 'interior') return 'Open the door again or use Quit interior to leave';
   const touchGuidance = typeof window !== 'undefined'
     && (window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0);
+  const lightStatus = manualLightsOn ? 'Vehicle lights on' : 'Vehicle lights off';
   return touchGuidance
-    ? 'Tap the door marker · one finger orbit · two fingers move + zoom'
-    : 'Select the door marker · left drag orbit · right drag pan · wheel zoom';
+    ? `${lightStatus} · tap the door marker · one finger orbit · two fingers move + zoom`
+    : `${lightStatus} · select the door marker · left drag orbit · right drag pan · wheel zoom`;
 }
 
-export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDrive, onStopDrive, onEnterInterior, onOpenInteriorDoor, onCloseInteriorDoor, onExitInterior, onCloseExteriorDoor }: Props) {
+export function ExploreOverlay({ phase, viewPhase, drivePhase, manualLightsOn, onExit, onToggleLights, onStartDrive, onStopDrive, onEnterInterior, onOpenInteriorDoor, onCloseInteriorDoor, onExitInterior, onCloseExteriorDoor }: Props) {
   const actionRef = useRef<HTMLButtonElement>(null);
   const driveActionRef = useRef<HTMLButtonElement>(null);
   const openDoorRef = useRef<HTMLButtonElement>(null);
@@ -151,7 +154,7 @@ export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDr
   }, [driveCanStop, drivePhase, exteriorDoorOpenAfterExitReady, exteriorDoorOpenReady, interactive, interiorDoorOpenReady, onExit, onExitInterior, onStopDrive, stableInterior]);
 
   if (phase === 'story') return null;
-  const status = readStatus(phase, viewPhase, drivePhase);
+  const status = readStatus(phase, viewPhase, drivePhase, manualLightsOn);
   const transitioningInterior = viewPhase === 'openingExteriorDoor'
     || viewPhase === 'enteringInterior'
     || viewPhase === 'closingInteriorDoor'
@@ -181,6 +184,17 @@ export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDr
     : onExit;
   const actionIcon: ExploreActionIconName = transitioningInterior ? 'pending'
     : 'close';
+  const driveControlVisible = exteriorReady || driveVisible;
+  const driveControlLabel = driveStarting ? 'Cancel'
+    : driveReady ? 'Stop drive'
+      : driveStopping ? 'Stopping'
+        : 'Auto drive';
+  const driveControlAriaLabel = driveStarting ? 'Cancel — Auto Drive launch'
+    : driveReady ? 'Stop drive — Auto Drive'
+      : driveStopping ? 'Stopping Auto Drive'
+        : 'Start Auto Drive';
+  const driveControlIcon: ExploreActionIconName = drivePhase === 'idle' ? 'drive' : 'stop';
+  const driveLightsEngaged = manualLightsOn || driveVisible;
   return (
     <aside
       className={`explore-overlay${interactive ? ' is-ready' : ''}${insideCabin ? ' is-interior' : ''}${transitioningInterior ? ' is-transitioning-interior' : ''}${driveVisible ? ' is-drive' : ''}${driveTransitioning ? ' is-drive-transitioning' : ''}`}
@@ -199,9 +213,35 @@ export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDr
           <span className="explore-overlay__drive-mark">R35</span>
         </div>
       ) : null}
+      {driveControlVisible ? (
+        <button
+          ref={driveActionRef}
+          type="button"
+          className="explore-overlay__drive-orb"
+          data-drive-control
+          data-drive-dock
+          data-drive-state={drivePhase}
+          data-lights={driveLightsEngaged ? 'on' : 'off'}
+          aria-label={driveControlAriaLabel}
+          aria-pressed={driveVisible}
+          aria-busy={driveStopping || undefined}
+          disabled={driveStopping}
+          onClick={driveVisible ? onStopDrive : onStartDrive}
+        >
+          <svg className="explore-overlay__drive-ring" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+            <circle className="explore-overlay__drive-ring-track" cx="50" cy="50" r="45" pathLength="100" vectorEffect="non-scaling-stroke" />
+            <circle className="explore-overlay__drive-ring-signal" cx="50" cy="50" r="45" pathLength="100" vectorEffect="non-scaling-stroke" />
+          </svg>
+          <span className="explore-overlay__drive-orb-core" aria-hidden="true">
+            <span className="explore-overlay__drive-orb-meta">R35 pilot</span>
+            <ExploreActionIcon name={driveControlIcon} />
+            <strong className="explore-overlay__drive-orb-label">{driveControlLabel}</strong>
+          </span>
+          <span className="explore-overlay__drive-lamp" aria-hidden="true" />
+        </button>
+      ) : null}
       <div
         className="explore-overlay__actions"
-        data-action-layout={stableInterior || exteriorDoorOpenReady || exteriorReady || driveVisible ? 'pair' : 'single'}
         aria-busy={(!interactive || driveStopping) || undefined}
       >
         {stableInterior ? (
@@ -225,39 +265,28 @@ export function ExploreOverlay({ phase, viewPhase, drivePhase, onExit, onStartDr
         ) : exteriorReady ? (
           <>
             <button
-              ref={driveActionRef}
-              type="button"
-              className="explore-overlay__exit"
-              data-tone="primary"
-              data-drive-control
-              aria-pressed={false}
-              onClick={onStartDrive}
+              type='button'
+              className='explore-overlay__exit'
+              data-tone={manualLightsOn ? 'primary' : 'secondary'}
+              data-light-control
+              aria-label='Vehicle lights'
+              aria-pressed={manualLightsOn}
+              onClick={onToggleLights}
             >
-              <span className="explore-overlay__action-label">Auto drive</span><ExploreActionIcon name="drive" />
+              <span className='explore-overlay__action-label'>
+                Lights
+                <span className='explore-overlay__light-state' aria-hidden='true'>{manualLightsOn ? 'On' : 'Off'}</span>
+              </span>
+              <ExploreActionIcon name='lights' />
             </button>
-            <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="utility" onClick={onExit}>
+            <button ref={actionRef} type='button' className='explore-overlay__exit' data-tone='utility' onClick={onExit}>
               <span className="explore-overlay__action-label">Exit 3D</span><ExploreActionIcon name="close" />
             </button>
           </>
         ) : driveVisible ? (
-          <>
-            <button
-              ref={driveActionRef}
-              type="button"
-              className="explore-overlay__exit"
-              data-tone="primary"
-              data-drive-control
-              aria-pressed={true}
-              aria-busy={driveStopping || undefined}
-              disabled={!driveCanStop}
-              onClick={onStopDrive}
-            >
-              <span className="explore-overlay__action-label">{driveStopping ? 'Stopping' : 'Stop drive'}</span><ExploreActionIcon name="stop" />
-            </button>
-            <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="utility" onClick={onExit}>
-              <span className="explore-overlay__action-label">Exit 3D</span><ExploreActionIcon name="close" />
-            </button>
-          </>
+          <button ref={actionRef} type="button" className="explore-overlay__exit" data-tone="utility" onClick={onExit}>
+            <span className="explore-overlay__action-label">Exit 3D</span><ExploreActionIcon name="close" />
+          </button>
         ) : (
           <button
             ref={actionRef}

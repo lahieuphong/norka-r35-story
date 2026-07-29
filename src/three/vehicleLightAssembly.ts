@@ -54,29 +54,38 @@ interface LightMaterialState {
 
 export interface VehicleLightAssembly {
   readonly spotRig: THREE.Group;
+  readonly headlightAnchors: VehicleHeadlightAnchors;
   readonly detachedMaterials: readonly THREE.Material[];
   render(blend: number): void;
   dispose(): void;
 }
 
+export interface VehicleHeadlightAnchors {
+  readonly left: THREE.Vector3;
+  readonly right: THREE.Vector3;
+}
+
 const FRONT_LIGHT_CONTRACTS: readonly FrontLightContract[] = [
-  { rootName: 'DRL_20', childName: 'Object_43', materialName: 'material', positionCount: 174, indexCount: 714, marker: 'drive-drl', stage: 'running', emissive: '#d8f2ff', intensity: 2.8 },
-  { rootName: 'parklight_leds_17', childName: 'Object_39', materialName: 'ext_chrome', positionCount: 252, indexCount: 720, marker: 'drive-park', stage: 'running', emissive: '#d7efff', intensity: 3.2 },
-  { rootName: 'licenseplatelight_15', childName: 'Object_35', materialName: 'ext_chrome', positionCount: 8, indexCount: 12, marker: 'drive-license', stage: 'running', emissive: '#fff0cf', intensity: 1.7 },
-  { rootName: 'lowbeam_lens_16', childName: 'Object_37', materialName: 'ext_chrome', positionCount: 212, indexCount: 960, marker: 'drive-low-beam', stage: 'lowBeam', emissive: '#e5f6ff', intensity: 4.2 },
-  { rootName: 'highbeam_lens_14', childName: 'Object_33', materialName: 'ext_chrome', positionCount: 106, indexCount: 480, marker: 'drive-high-beam', stage: 'highBeam', emissive: '#d9f2ff', intensity: 5.2 },
+  { rootName: 'DRL_20', childName: 'Object_43', materialName: 'material', positionCount: 174, indexCount: 714, marker: 'drive-drl', stage: 'running', emissive: '#d8f2ff', intensity: 4.2 },
+  { rootName: 'parklight_leds_17', childName: 'Object_39', materialName: 'ext_chrome', positionCount: 252, indexCount: 720, marker: 'drive-park', stage: 'running', emissive: '#d7efff', intensity: 4.6 },
+  { rootName: 'licenseplatelight_15', childName: 'Object_35', materialName: 'ext_chrome', positionCount: 8, indexCount: 12, marker: 'drive-license', stage: 'running', emissive: '#fff0cf', intensity: 2.5 },
+  { rootName: 'lowbeam_lens_16', childName: 'Object_37', materialName: 'ext_chrome', positionCount: 212, indexCount: 960, marker: 'drive-low-beam', stage: 'lowBeam', emissive: '#e5f6ff', intensity: 6.2 },
+  { rootName: 'highbeam_lens_14', childName: 'Object_33', materialName: 'ext_chrome', positionCount: 106, indexCount: 480, marker: 'drive-high-beam', stage: 'highBeam', emissive: '#d9f2ff', intensity: 7.2 },
 ] as const;
 
 const REAR_LIGHT_CONTRACTS: readonly RearLightContract[] = [
-  { materialName: 'tail_lights_red', marker: 'drive-tail-glass', emissive: '#ff1208', intensity: 1.05 },
-  { materialName: 'redled', marker: 'drive-tail-led', emissive: '#ff1c10', intensity: 1.65 },
+  { materialName: 'tail_lights_red', marker: 'drive-tail-glass', emissive: '#ff1208', intensity: 2.4 },
+  { materialName: 'redled', marker: 'drive-tail-led', emissive: '#ff1c10', intensity: 4.2 },
 ] as const;
 
-const HEADLIGHT_X = 0.7;
-const HEADLIGHT_Y = 0.63;
-const HEADLIGHT_Z = 2.14;
-const HEADLIGHT_TARGET_Y = 0.04;
-const HEADLIGHT_TARGET_Z = 9.8;
+const HEADLIGHT_TARGET_Y = -0.06;
+const HEADLIGHT_TARGET_DISTANCE = 8;
+const HEADLIGHT_SURFACE_OFFSET = 0.004;
+const LOW_BEAM_SPLIT_EPSILON = 1e-5;
+const FALLBACK_HEADLIGHT_ANCHORS: VehicleHeadlightAnchors = {
+  left: new THREE.Vector3(0.7259, 0.58979, 2.007),
+  right: new THREE.Vector3(-0.72645, 0.58979, 2.007),
+};
 
 function meshMaterials(mesh: THREE.Mesh): readonly THREE.Material[] {
   return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -174,11 +183,57 @@ function resolveRearLights(root: THREE.Object3D): readonly THREE.MeshStandardMat
   return resolved;
 }
 
-function createSpotLight(side: 'left' | 'right', x: number): { readonly light: THREE.SpotLight; readonly target: THREE.Object3D } {
+function resolveHeadlightAnchors(root: THREE.Object3D, frontLights: readonly ResolvedFrontLight[]): VehicleHeadlightAnchors {
+  const fallback = (): VehicleHeadlightAnchors => ({
+    left: FALLBACK_HEADLIGHT_ANCHORS.left.clone(),
+    right: FALLBACK_HEADLIGHT_ANCHORS.right.clone(),
+  });
+  const lowBeam = frontLights.find(({ contract }) => contract.stage === 'lowBeam');
+  const position = lowBeam?.mesh.geometry.getAttribute('position');
+  if (!lowBeam || !position || position.itemSize < 3 || position.count < 6) return fallback();
+
+  root.updateWorldMatrix(true, true);
+  const rootDeterminant = root.matrixWorld.determinant();
+  if (!Number.isFinite(rootDeterminant) || Math.abs(rootDeterminant) < 1e-10) return fallback();
+  const rootInverse = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const toRoot = new THREE.Matrix4().multiplyMatrices(rootInverse, lowBeam.mesh.matrixWorld);
+  const leftBounds = new THREE.Box3().makeEmpty();
+  const rightBounds = new THREE.Box3().makeEmpty();
+  const vertex = new THREE.Vector3();
+  let leftCount = 0;
+  let rightCount = 0;
+  for (let index = 0; index < position.count; index += 1) {
+    // getX/getY/getZ preserve normalized integer attributes in optimized GLBs.
+    vertex
+      .set(position.getX(index), position.getY(index), position.getZ(index))
+      .applyMatrix4(toRoot);
+    if (!Number.isFinite(vertex.x) || !Number.isFinite(vertex.y) || !Number.isFinite(vertex.z)) return fallback();
+    if (vertex.x > LOW_BEAM_SPLIT_EPSILON) {
+      leftBounds.expandByPoint(vertex);
+      leftCount += 1;
+    } else if (vertex.x < -LOW_BEAM_SPLIT_EPSILON) {
+      rightBounds.expandByPoint(vertex);
+      rightCount += 1;
+    }
+  }
+  if (leftCount < 3 || rightCount < 3 || leftBounds.isEmpty() || rightBounds.isEmpty()) return fallback();
+
+  const readAnchor = (bounds: THREE.Box3): THREE.Vector3 => {
+    const anchor = bounds.getCenter(new THREE.Vector3());
+    anchor.z = bounds.max.z + HEADLIGHT_SURFACE_OFFSET;
+    return anchor;
+  };
+  const left = readAnchor(leftBounds);
+  const right = readAnchor(rightBounds);
+  if (left.x <= 0 || right.x >= 0) return fallback();
+  return { left, right };
+}
+
+function createSpotLight(side: 'left' | 'right', anchor: THREE.Vector3): { readonly light: THREE.SpotLight; readonly target: THREE.Object3D } {
   const name = `drive-headlight-${side}`;
   const light = new THREE.SpotLight('#d9f2ff', 0, 12, 0.22, 0.7, 2);
   light.name = name;
-  light.position.set(x, HEADLIGHT_Y, HEADLIGHT_Z);
+  light.position.copy(anchor);
   light.castShadow = false;
   light.visible = true;
   light.userData.driveLightMarker = 'drive-headlight-spot';
@@ -186,7 +241,7 @@ function createSpotLight(side: 'left' | 'right', x: number): { readonly light: T
   light.userData.driveLightSide = side;
   const target = new THREE.Object3D();
   target.name = `${name}-target`;
-  target.position.set(x, HEADLIGHT_TARGET_Y, HEADLIGHT_TARGET_Z);
+  target.position.set(anchor.x, HEADLIGHT_TARGET_Y, anchor.z + HEADLIGHT_TARGET_DISTANCE);
   target.userData.driveLightMarker = 'drive-headlight-target';
   target.userData.driveLightSide = side;
   light.target = target;
@@ -201,10 +256,16 @@ export function writeVehicleLightStages(blend: number, target: VehicleLightStage
   return target;
 }
 
+export function resolveVehicleLightBlend(driveLightBlend: number, manualLightsOn: boolean): number {
+  if (manualLightsOn) return 1;
+  return THREE.MathUtils.clamp(Number.isFinite(driveLightBlend) ? driveLightBlend : 0, 0, 1);
+}
+
 export function createVehicleLightAssembly(root: THREE.Object3D): VehicleLightAssembly | null {
   const frontLights = resolveFrontLights(root);
   const rearMaterials = resolveRearLights(root);
   if (!frontLights || !rearMaterials) return null;
+  const headlightAnchors = resolveHeadlightAnchors(root, frontLights);
 
   const frontMaterials = frontLights.map(({ sourceMaterial }) => sourceMaterial.clone());
   const materialStates: LightMaterialState[] = [];
@@ -229,8 +290,8 @@ export function createVehicleLightAssembly(root: THREE.Object3D): VehicleLightAs
   const spotRig = new THREE.Group();
   spotRig.name = 'drive-headlight-rig';
   spotRig.userData.driveLightMarker = 'drive-headlight-rig';
-  const leftSpot = createSpotLight('left', HEADLIGHT_X);
-  const rightSpot = createSpotLight('right', -HEADLIGHT_X);
+  const leftSpot = createSpotLight('left', headlightAnchors.left);
+  const rightSpot = createSpotLight('right', headlightAnchors.right);
   spotRig.add(leftSpot.light, leftSpot.target, rightSpot.light, rightSpot.target);
   const spots = [leftSpot.light, rightSpot.light] as const;
   const stages: VehicleLightStages = { running: 0, lowBeam: 0, highBeam: 0 };
@@ -248,10 +309,10 @@ export function createVehicleLightAssembly(root: THREE.Object3D): VehicleLightAs
       state.material.emissive.copy(state.baseEmissive).lerp(state.activeEmissive, stageBlend);
       state.material.emissiveIntensity = THREE.MathUtils.lerp(state.baseIntensity, state.activeIntensity, stageBlend);
     });
-    const intensity = stages.lowBeam * 14 + stages.highBeam * 28;
-    const angle = THREE.MathUtils.lerp(0.22, 0.14, stages.highBeam);
-    const distance = THREE.MathUtils.lerp(12, 20, stages.highBeam);
-    const penumbra = THREE.MathUtils.lerp(0.7, 0.42, stages.highBeam);
+    const intensity = stages.lowBeam * 30 + stages.highBeam * 40;
+    const angle = THREE.MathUtils.lerp(0.26, 0.21, stages.highBeam);
+    const distance = THREE.MathUtils.lerp(14, 20, stages.highBeam);
+    const penumbra = THREE.MathUtils.lerp(0.86, 0.76, stages.highBeam);
     spots.forEach((spot) => {
       spot.intensity = intensity;
       spot.angle = angle;
@@ -262,6 +323,7 @@ export function createVehicleLightAssembly(root: THREE.Object3D): VehicleLightAs
 
   return {
     spotRig,
+    headlightAnchors,
     detachedMaterials,
     render,
     dispose: () => {

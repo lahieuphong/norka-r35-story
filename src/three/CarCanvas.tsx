@@ -19,6 +19,7 @@ interface Props {
   readonly phase: ExplorePhase;
   readonly viewPhase: ExploreViewPhase;
   readonly drivePhase: DrivePhase;
+  readonly manualLightsOn: boolean;
   readonly exitStoryShot?: ShotName | null;
   readonly reducedMotion: boolean;
   readonly onModelReady: (details: ModelReadyDetails) => void;
@@ -653,7 +654,7 @@ class CanvasBoundary extends Component<{ readonly children: ReactNode; readonly 
   public override render(): ReactNode { return this.state.failed ? <WebGLFallback onFailure={this.props.onFailure} /> : this.props.children; }
 }
 
-function WebGLCarCanvas({ modelReady, phase, viewPhase, drivePhase, exitStoryShot = null, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onDriveStartComplete, onDriveStopComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
+function WebGLCarCanvas({ modelReady, phase, viewPhase, drivePhase, manualLightsOn, exitStoryShot = null, reducedMotion, onModelReady, onWebGLFailure, onEnterComplete, onExitComplete, onDriveStartComplete, onDriveStopComplete, onOpenExteriorDoor, onExteriorDoorOpenComplete, onInteriorEnterComplete, onInteriorDoorOpenComplete, onInteriorDoorCloseComplete, onInteriorExitDoorOpenComplete, onInteriorExitComplete, onExteriorDoorCloseComplete }: Props) {
   const profile = useProfile();
   const [gpuConstrained, setGpuConstrained] = useState(false);
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -794,6 +795,7 @@ function WebGLCarCanvas({ modelReady, phase, viewPhase, drivePhase, exitStorySho
               anisotropy={gpuConstrained ? Math.min(profile.anisotropy, 4) : profile.anisotropy}
               driveActive={driveActive}
               interactionRig={interactionRig}
+              manualLightsOn={manualLightsOn}
               modelTier={profile.modelTier}
               phase={phase}
               viewPhase={viewPhase}

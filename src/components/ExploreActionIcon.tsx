@@ -1,10 +1,11 @@
-export type ExploreActionIconName = 'close' | 'drive' | 'enter' | 'open' | 'quit' | 'stop' | 'pending';
+export type ExploreActionIconName = 'close' | 'drive' | 'enter' | 'lights' | 'open' | 'quit' | 'stop' | 'pending';
 
 type StrokeIconName = Exclude<ExploreActionIconName, 'drive' | 'pending'>;
 
 const STROKE_PATHS: Record<StrokeIconName, readonly string[]> = {
   close: ['M6 6l8 8', 'M14 6l-8 8'],
   enter: ['M3.75 10h12.5', 'M12 5.75L16.25 10 12 14.25'],
+  lights: ['M4.25 6.35h4.4c1.75 0 3.15 1.62 3.15 3.65s-1.4 3.65-3.15 3.65h-4.4z', 'M14.1 6.85l2.15-1.4', 'M14.55 10h2.45', 'M14.1 13.15l2.15 1.4'],
   open: ['M5.25 14.75l9.5-9.5', 'M8.25 5.25h6.5v6.5'],
   quit: ['M14.75 5.25l-9.5 9.5', 'M11.75 14.75h-6.5v-6.5'],
   stop: ['M6.4 6.4h7.2v7.2H6.4z'],

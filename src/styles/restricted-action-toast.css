@@ -148,6 +148,12 @@
   to { transform: scaleX(0); }
 }
 
+@media (max-width: 680px) {
+  :root:has(.explore-overlay__drive-orb) .restricted-action-toast {
+    inset-block-end: max(7.25rem,calc(env(safe-area-inset-bottom) + 7.05rem));
+  }
+}
+
 @media (max-width: 480px) {
   .restricted-action-toast {
     inset: auto auto max(.75rem,calc(env(safe-area-inset-bottom) + .45rem)) 50%;
@@ -164,6 +170,12 @@
   }
   .restricted-action-toast__copy > span:last-child {
     font-size: .68rem;
+  }
+}
+
+@media (max-width: 680px) and (max-height: 480px) and (orientation: landscape) {
+  :root:has(.explore-overlay__drive-orb) .restricted-action-toast {
+    inset-block-end: max(6.2rem,calc(env(safe-area-inset-bottom) + 5.9rem));
   }
 }
 
