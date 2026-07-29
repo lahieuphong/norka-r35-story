@@ -235,8 +235,8 @@ export function ExploreOverlay({ phase, viewPhase, drivePhase, manualLightsOn, o
           <span className="explore-overlay__drive-orb-core" aria-hidden="true">
             <span className="explore-overlay__drive-orb-meta">R35 pilot</span>
             <ExploreActionIcon name={driveControlIcon} />
-            <strong className="explore-overlay__drive-orb-label">{driveControlLabel}</strong>
           </span>
+          <strong className="explore-overlay__drive-orb-label" aria-hidden="true">{driveControlLabel}</strong>
           <span className="explore-overlay__drive-lamp" aria-hidden="true" />
         </button>
       ) : null}
